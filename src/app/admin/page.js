@@ -14,6 +14,8 @@ import {
 import { getAuth, signInAnonymously } from "firebase/auth";
 
 const ADMIN_PASSWORD = "0121";
+const BUILD_VERSION = "v1.2.0";
+const BUILD_TIME = "2026-06-05 16:35";
 
 const DEFAULT_CATEGORIES = {
   deokso: "🏫 덕소중학교 스페셜",
@@ -287,6 +289,9 @@ export default function AdminPage() {
           >
             ← 로비로 돌아가기
           </button>
+          <div style={{ marginTop: "2rem", fontSize: "0.75rem", color: "#475569", fontWeight: "600" }}>
+            버전: {BUILD_VERSION} | 빌드 시각: {BUILD_TIME}
+          </div>
         </div>
 
         <style jsx>{`
@@ -391,9 +396,12 @@ export default function AdminPage() {
     <div className="admin-container">
       {/* 관리자 헤더 */}
       <header className="admin-header">
-        <div className="logo-section">
+        <div className="logo-section" style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <div className="badge">Deokso Admin</div>
           <h1>덕소중 캐치마인드 관리자</h1>
+          <span className="build-badge" style={{ fontSize: "0.75rem", background: "rgba(255,255,255,0.06)", color: "#94a3b8", padding: "0.25rem 0.5rem", borderRadius: "4px", marginLeft: "0.5rem" }}>
+            {BUILD_VERSION} ({BUILD_TIME})
+          </span>
         </div>
         <div className="action-section">
           <button onClick={() => window.location.href = "/"} className="btn-outline-sm">
