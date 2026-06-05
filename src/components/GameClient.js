@@ -4,6 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import Canvas from "@/components/Canvas";
 import { WORD_CATEGORIES, getRandomWord } from "@/utils/WordList";
 import confetti from "canvas-confetti";
+import { db } from "@/utils/firebase";
+import { collection, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth, signInAnonymously } from "firebase/auth";
 
 // 랜덤 이모지 아바타 할당용
 const AVATARS = ["🐶", "🐱", "🦁", "🐯", "🦊", "🐨", "🐼", "🐸", "🐰", "🐵", "🐥", "🐬", "🦄", "🐙", "🦖"];
@@ -129,12 +132,104 @@ export default function Home() {
     }
   };
 
-  // 4자리 숫자의 방 코드 자동 생성
+  // Firestore 연동 제시어 상태
+  const [gameWords, setGameWords] = useState(WORD_CATEGORIES);
+  const gameWordsRef = useRef(WORD_CATEGORIES);
+
+  // Firestore에서 제시어 목록 로드 및 없으면 Seeding
+  const fetchAndSyncWords = async () => {
+    try {
+      const wordsCol = collection(db, "catch_words");
+      const snapshot = await getDocs(wordsCol);
+      
+      let loadedWordsList = [];
+      snapshot.forEach((doc) => {
+        loadedWordsList.push(doc.data());
+      });
+      
+      if (loadedWordsList.length === 0) {
+        // DB가 비어있는 경우 기존 로컬 단어로 초기화(Seeding)
+        console.log("Seeding Firestore with default word list...");
+        const promises = [];
+        for (const [catKey, catVal] of Object.entries(WORD_CATEGORIES)) {
+          for (const wordText of catVal.words) {
+            promises.push(
+              addDoc(wordsCol, {
+                word: wordText,
+                category: catKey,
+                createdAt: serverTimestamp()
+              })
+            );
+          }
+        }
+        await Promise.all(promises);
+        
+        // 다시 데이터 로드
+        const reSnapshot = await getDocs(wordsCol);
+        reSnapshot.forEach((doc) => {
+          loadedWordsList.push(doc.data());
+        });
+      }
+      
+      // 불러온 단어들 카테고리별로 정렬
+      const newCategories = {
+        deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
+        animals: { name: "🦁 동물 & 식물", words: [] },
+        food: { name: "🍕 맛있는 음식", words: [] },
+        knowledge: { name: "🧠 교과 및 일반상식", words: [] }
+      };
+      
+      loadedWordsList.forEach((w) => {
+        if (newCategories[w.category]) {
+          newCategories[w.category].words.push(w.word);
+        } else {
+          // 신규 생성된 커스텀 카테고리 처리
+          newCategories[w.category] = { name: `📂 ${w.category}`, words: [w.word] };
+        }
+      });
+      
+      setGameWords(newCategories);
+      gameWordsRef.current = newCategories;
+    } catch (error) {
+      console.error("Firestore 제시어 동기화 실패, 로컬 데이터를 사용합니다:", error);
+    }
+  };
+
+  // 4자리 숫자의 방 코드 자동 생성 및 제시어 동기화
   useEffect(() => {
     setMounted(true);
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     setRoomCode(code);
     setIsPeerLoaded(true);
+
+    const initAuthAndSync = async () => {
+      try {
+        const auth = getAuth();
+        await signInAnonymously(auth);
+        console.log("Firestore 익명 로그인 성공");
+      } catch (authError) {
+        console.error("Firestore 익명 로그인 실패 (비로그인 상태로 계속 진행):", authError);
+      }
+      await fetchAndSyncWords();
+
+      // 관리자 페이지로부터 넘어온 자동 방 생성 파라미터 체크
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("action") === "create") {
+          const cat = params.get("category") || "deokso";
+          const time = parseInt(params.get("time") || "60");
+          const rounds = parseInt(params.get("rounds") || "3");
+
+          setWordCategory(cat);
+          setRoundTime(time);
+          setTotalRounds(rounds);
+
+          // 방을 즉시 생성
+          handleCreateRoom(code);
+        }
+      }
+    };
+    initAuthAndSync();
   }, []);
 
   // 채팅 메시지 추가 시 스크롤 최하단 자동 이동
@@ -143,8 +238,9 @@ export default function Home() {
   }, [chatMessages]);
 
   // 교사(방장) 방 만들기
-  const handleCreateRoom = async () => {
-    if (!roomCode || roomCode.length !== 4) {
+  const handleCreateRoom = async (overrideCode) => {
+    const activeCode = overrideCode || roomCode;
+    if (!activeCode || activeCode.length !== 4) {
       alert("올바른 참여 코드를 생성해 주세요.");
       return;
     }
@@ -156,7 +252,7 @@ export default function Home() {
       const PeerModule = await import("peerjs");
       const Peer = PeerModule.default;
       
-      const peerId = `deokso-mq-${roomCode}`;
+      const peerId = `deokso-mq-${activeCode}`;
       const peer = new Peer(peerId);
 
       peer.on("open", () => {
@@ -371,6 +467,39 @@ export default function Home() {
           type: "SYSTEM_MSG",
           text: systemMsg
         });
+
+        // 뒤늦게 입장한 학생 싱크 맞추기 (게임이 이미 시작된 경우)
+        if (gameStage === "PLAYING") {
+          conn.send({
+            type: "GAME_START",
+            settings: {
+              duration: roundTimeRef.current,
+              rounds: totalRoundsRef.current
+            }
+          });
+
+          // 약간의 딜레이를 주어 클라이언트가 스테이지 전환을 완료한 후 턴 데이터를 처리하게 함
+          setTimeout(() => {
+            if (conn.open) {
+              conn.send({
+                type: "START_TURN",
+                drawerId: drawerId,
+                drawerName: drawerName,
+                wordLength: wordLength,
+                hint: wordHint,
+                timeLeft: timeLeft,
+                round: currentRound,
+                turn: turnIndexRef.current + 1,
+                word: "" // 중간 참가자는 일단 관전/추측부터 시작
+              });
+            }
+          }, 500);
+        } else if (gameStage === "OVER") {
+          conn.send({
+            type: "GAME_OVER",
+            players: updatedPlayers.filter((p) => p.id !== "host").sort((a, b) => b.score - a.score)
+          });
+        }
         break;
 
       case "CHAT":
@@ -710,8 +839,9 @@ export default function Home() {
 
   // 교사용 게임 시작 실행
   const handleStartGame = () => {
-    if (players.length < 1) {
-      alert("최소 한 명 이상의 학생이 들어와야 테스트 및 플레이가 가능합니다.");
+    const students = players.filter((p) => p.id !== "host");
+    if (students.length < 1) {
+      alert("최소 한 명 이상의 학생이 들어와야 게임을 시작할 수 있습니다.");
       return;
     }
 
@@ -742,13 +872,19 @@ export default function Home() {
     }, 1000);
   };
 
+  // 로드된 제시어 중 랜덤으로 선출하는 헬퍼 함수
+  const getLocalRandomWord = (categoryKey) => {
+    const category = gameWordsRef.current[categoryKey] || gameWordsRef.current.deokso;
+    const words = category.words;
+    if (!words || words.length === 0) return "덕소중학교";
+    const randomIndex = Math.floor(Math.random() * words.length);
+    return words[randomIndex];
+  };
+
   // 새 턴 시작 처리 (호스트만 수행)
   const startNewTurn = () => {
-    if (playersStateRef.current.length === 0) return;
-
-    // 출제자 선출 순서 (선생님도 포함시킬지 결정 가능: 일단 접속자 중 학생들로 루프)
-    // 방에 오직 선생님 혼자라면 선생님이 그리지만, 학생들이 있다면 학생들만 순차적으로 출제
-    const candidates = playersStateRef.current;
+    const candidates = playersStateRef.current.filter((p) => p.id !== "host");
+    if (candidates.length === 0) return;
     
     // 출제자 객체 선택
     let drawerIdx = activeDrawerIndexRef.current;
@@ -760,11 +896,11 @@ export default function Home() {
     const drawer = candidates[drawerIdx];
     
     // 제시어 무작위 선출
-    let word = getRandomWord(categoryRef.current);
+    let word = getLocalRandomWord(categoryRef.current);
     // 중복 방지 (단어장의 단어를 다 썼을 경우 리셋)
     let attempts = 0;
     while (usedWordsRef.current.has(word) && attempts < 50) {
-      word = getRandomWord(categoryRef.current);
+      word = getLocalRandomWord(categoryRef.current);
       attempts++;
     }
     usedWordsRef.current.add(word);
@@ -781,7 +917,7 @@ export default function Home() {
     setWordHint(hintText);
     setTimeLeft(roundTimeRef.current);
     
-    if (drawer.id === "host") {
+    if (drawer.id === "host" || isHost) {
       setCurrentWord(word);
     } else {
       setCurrentWord("");
@@ -874,8 +1010,10 @@ export default function Home() {
     turnIndexRef.current += 1;
     activeDrawerIndexRef.current += 1;
 
-    // 모든 플레이어가 한 번씩 그렸다면 1라운드 종료
-    if (activeDrawerIndexRef.current >= playersStateRef.current.length) {
+    const studentCandidates = playersStateRef.current.filter((p) => p.id !== "host");
+
+    // 모든 학생 플레이어가 한 번씩 그렸다면 1라운드 종료
+    if (activeDrawerIndexRef.current >= studentCandidates.length) {
       activeDrawerIndexRef.current = 0;
       
       const nextRound = currentRound + 1;
@@ -890,18 +1028,41 @@ export default function Home() {
     startNewTurn();
   };
 
+  // Firestore에 학생들의 최종 게임 결과 저장
+  const saveScoresToFirestore = async (sortedPlayers) => {
+    try {
+      const scoresCol = collection(db, "catch_scores");
+      const promises = sortedPlayers.map((player) => {
+        return addDoc(scoresCol, {
+          nickname: player.name,
+          score: player.score,
+          roomCode: roomCode,
+          timestamp: serverTimestamp()
+        });
+      });
+      await Promise.all(promises);
+      console.log("Firestore에 게임 성적 저장 성공!");
+    } catch (e) {
+      console.error("Firestore에 게임 성적 저장 실패:", e);
+    }
+  };
+
   // 게임 오버 처리
   const handleGameOver = () => {
     setGameStage("OVER");
     
-    // 점수별 내림차순 정렬하여 우승 포디움 생성
-    const sorted = [...playersStateRef.current].sort((a, b) => b.score - a.score);
+    // 선생님을 제외하고 점수별 내림차순 정렬하여 우승 포디움 생성
+    const studentsOnly = playersStateRef.current.filter((p) => p.id !== "host");
+    const sorted = [...studentsOnly].sort((a, b) => b.score - a.score);
     setPlayers(sorted); // 추가: 호스트(교사) 로컬 화면 스코어 목록도 순위순 갱신
     
     broadcastToAll({
       type: "GAME_OVER",
       players: sorted
     });
+
+    // Firestore에 성적 기록
+    saveScoresToFirestore(sorted);
 
     // 교사 오디오 및 Confetti
     playSound("gameover");
@@ -938,7 +1099,17 @@ export default function Home() {
           <h1 className="logo-text">덕소중 캐치마인드<span className="logo-subtext">그림퀴즈</span></h1>
         </div>
 
-        {gameStage !== "LOBBY" && (
+        {gameStage === "LOBBY" ? (
+          <div>
+            <button 
+              onClick={() => window.location.href = "/admin"} 
+              className="btn btn-outline btn-sm"
+              style={{ display: "flex", alignItems: "center", gap: "0.25rem", border: "1px solid rgba(255,255,255,0.15)", color: "#f8fafc" }}
+            >
+              ⚙️ 관리자 페이지
+            </button>
+          </div>
+        ) : (
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
             <span className="status-badge connected">
               {isHost ? "선생님 방장" : "참가 학생"}
@@ -957,69 +1128,6 @@ export default function Home() {
             ======================================================= */}
         {gameStage === "LOBBY" && (
           <div className="lobby-grid">
-            {/* 교사용 방 만들기 카드 */}
-            <div className="lobby-card teacher-card">
-              <h2 className="card-title">🎓 선생님용 방 만들기</h2>
-              <p className="card-desc">
-                캐치마인드 게임 룸을 개설합니다. 단어장 카테고리와 제한 시간, 총 라운드 수를 커스텀 설정할 수 있습니다.
-              </p>
-
-              <div className="form-group">
-                <label className="form-label">제시어 카테고리</label>
-                <select 
-                  className="form-select"
-                  value={wordCategory}
-                  onChange={(e) => setWordCategory(e.target.value)}
-                >
-                  {Object.keys(WORD_CATEGORIES).map((key) => (
-                    <option key={key} value={key}>
-                      {WORD_CATEGORIES[key].name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div className="form-group">
-                  <label className="form-label">라운드당 시간 (초)</label>
-                  <select 
-                    className="form-select"
-                    value={roundTime}
-                    onChange={(e) => setRoundTime(parseInt(e.target.value))}
-                  >
-                    <option value={30}>30초 (매우 빠름)</option>
-                    <option value={60}>60초 (보통)</option>
-                    <option value={90}>90초 (느긋함)</option>
-                    <option value={120}>120초 (초등/중등 초급)</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">총 라운드 수</label>
-                  <select 
-                    className="form-select"
-                    value={totalRounds}
-                    onChange={(e) => setTotalRounds(parseInt(e.target.value))}
-                  >
-                    <option value={1}>1 라운드</option>
-                    <option value={2}>2 라운드</option>
-                    <option value={3}>3 라운드</option>
-                    <option value={5}>5 라운드</option>
-                  </select>
-                </div>
-              </div>
-
-              <button 
-                className="btn btn-primary btn-block" 
-                onClick={handleCreateRoom}
-                disabled={peerLoading}
-                style={{ marginTop: "1rem" }}
-              >
-                {peerLoading ? "실시간 서버 연결 중..." : "🏫 캐치마인드 방 만들기"}
-              </button>
-
-              {peerError && <p style={{ color: "var(--error-color)", marginTop: "1rem", fontSize: "0.9rem" }}>{peerError}</p>}
-            </div>
-
             {/* 학생용 입장하기 카드 */}
             <div className="lobby-card student-card">
               <h2 className="card-title">✏️ 학생용 게임 참가</h2>
@@ -1133,7 +1241,7 @@ export default function Home() {
                 <span className="student-count-badge">R {currentRound}/{totalRounds}</span>
               </div>
               <div className="rank-list">
-                {[...players].sort((a, b) => b.score - a.score).map((p, idx) => {
+                {[...players].filter((p) => p.id !== "host").sort((a, b) => b.score - a.score).map((p, idx) => {
                   const isMe = (!isHost && peerRef.current && p.id === peerRef.current.id) || (isHost && p.id === "host");
                   const isPlayerDrawer = p.id === drawerId;
                   return (
@@ -1168,10 +1276,10 @@ export default function Home() {
 
                 <div className="info-word-container">
                   <span className="word-label">
-                    {checkIsDrawer() ? "🎨 나에게 보낸 제시어" : "💡 문제 글자 수"}
+                    {checkIsDrawer() ? "🎨 나에게 보낸 제시어" : isHost ? "🎓 제시어 (선생님 화면)" : "💡 문제 글자 수"}
                   </span>
                   
-                  {checkIsDrawer() ? (
+                  {checkIsDrawer() || isHost ? (
                     <span className="word-value">{currentWord}</span>
                   ) : (
                     <span className="word-value is-hint">{wordHint}</span>

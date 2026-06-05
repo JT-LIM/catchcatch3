@@ -147,19 +147,13 @@ body {
 
 /* 로비 카드 디자인 */
 .lobby-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2.5rem;
-  margin-top: auto;
-  margin-bottom: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  margin: auto;
   padding: 2rem 0;
-}
-
-@media (max-width: 768px) {
-  .lobby-grid {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
-  }
 }
 
 .lobby-card {
@@ -167,12 +161,119 @@ body {
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 2.5rem;
   display: flex;
   flex-direction: column;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+}
+
+/* 학생용 카드 특화 스타일 */
+.lobby-card.student-card {
+  padding: 3.5rem;
+  border: 2px solid rgba(236, 72, 153, 0.15);
+  box-shadow: 0 20px 40px rgba(236, 72, 153, 0.08);
+}
+
+.lobby-card.student-card:hover {
+  transform: translateY(-6px);
+  border-color: rgba(236, 72, 153, 0.6);
+  box-shadow: var(--shadow-lg), 0 0 35px rgba(236, 72, 153, 0.2);
+  background: var(--bg-card-hover);
+}
+
+.lobby-card.student-card .card-title {
+  font-size: 2.2rem;
+  margin-bottom: 1rem;
+}
+
+.lobby-card.student-card .card-desc {
+  font-size: 1.05rem;
+  margin-bottom: 2.5rem;
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+.lobby-card.student-card .form-input {
+  font-size: 1.2rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  background: rgba(10, 14, 26, 0.7);
+}
+
+.lobby-card.student-card .form-input:focus {
+  border-color: #ec4899;
+  box-shadow: 0 0 15px rgba(236, 72, 153, 0.35);
+  background: rgba(10, 14, 26, 0.9);
+}
+
+.lobby-card.student-card .btn {
+  font-size: 1.25rem;
+  padding: 1.15rem 2rem;
+  border-radius: var(--radius-md);
+  margin-top: 1.5rem !important;
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(236, 72, 153, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);
+  }
+}
+
+/* 선생님용 카드 특화 스타일 */
+.lobby-card.teacher-card {
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.75;
+}
+
+.lobby-card.teacher-card:hover {
+  transform: translateY(-3px);
+  opacity: 1;
+  border-color: var(--border-color-active);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-md), 0 0 20px rgba(139, 92, 246, 0.1);
+}
+
+.lobby-card.teacher-card .card-title {
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.lobby-card.teacher-card .card-desc {
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+  color: var(--text-muted);
+}
+
+.lobby-card.teacher-card .form-group {
+  margin-bottom: 1rem;
+}
+
+.lobby-card.teacher-card .form-label {
+  font-size: 0.75rem;
+}
+
+.lobby-card.teacher-card .form-select {
+  font-size: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+}
+
+.lobby-card.teacher-card .btn {
+  font-size: 0.95rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: var(--radius-sm);
+  margin-top: 0.75rem !important;
 }
 
 .lobby-card::before {
@@ -194,17 +295,8 @@ body {
   background: var(--gradient-secondary);
 }
 
-.lobby-card:hover {
-  transform: translateY(-5px);
-  border-color: var(--border-color-active);
-  background: var(--bg-card-hover);
-  box-shadow: var(--shadow-lg), 0 0 30px rgba(139, 92, 246, 0.05);
-}
-
 .card-title {
-  font-size: 1.6rem;
   font-weight: 700;
-  margin-bottom: 0.75rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -212,8 +304,6 @@ body {
 
 .card-desc {
   color: var(--text-secondary);
-  font-size: 0.95rem;
-  margin-bottom: 2rem;
   line-height: 1.6;
 }
 
