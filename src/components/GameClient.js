@@ -248,6 +248,9 @@ export default function Home() {
     setPeerLoading(true);
     setPeerError("");
 
+    let isCreated = false;
+    let createTimeout = null;
+
     try {
       const PeerModule = await import("peerjs");
       const Peer = PeerModule.default;
@@ -255,7 +258,23 @@ export default function Home() {
       const peerId = `deokso-mq-${activeCode}`;
       const peer = new Peer(peerId);
 
+      // 방 생성 제한 시간 설정 (8초)
+      createTimeout = setTimeout(() => {
+        if (!isCreated) {
+          console.warn("방 생성 타임아웃");
+          setPeerLoading(false);
+          setPeerError("방 생성 시간이 초과되었습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.");
+          alert("방 생성 시간이 초과되었습니다. 네트워크 연결 상태를 확인해주세요.");
+          if (peer) {
+            peer.destroy();
+          }
+          peerRef.current = null;
+        }
+      }, 8000);
+
       peer.on("open", () => {
+        isCreated = true;
+        if (createTimeout) clearTimeout(createTimeout);
         peerRef.current = peer;
         setIsHost(true);
         setGameStage("WAITING");
@@ -285,6 +304,8 @@ export default function Home() {
       });
 
       peer.on("error", (err) => {
+        isCreated = false;
+        if (createTimeout) clearTimeout(createTimeout);
         console.error("PeerJS error:", err);
         setPeerLoading(false);
         if (err.type === "unavailable-id") {
@@ -295,6 +316,8 @@ export default function Home() {
       });
 
     } catch (e) {
+      isCreated = false;
+      if (createTimeout) clearTimeout(createTimeout);
       console.error(e);
       setPeerLoading(false);
       setPeerError("실시간 서버 연결 실패. 잠시 후 다시 시도해 주세요.");
@@ -315,12 +338,31 @@ export default function Home() {
     setPeerLoading(true);
     setPeerError("");
 
+    let isConnected = false;
+    let connectionTimeout = null;
+
     try {
       const PeerModule = await import("peerjs");
       const Peer = PeerModule.default;
 
       // 학생은 무작위 ID 생성
       const peer = new Peer();
+
+      // 연결 제한 시간 설정 (8초)
+      connectionTimeout = setTimeout(() => {
+        if (!isConnected) {
+          console.warn("방 연결 타임아웃");
+          setPeerLoading(false);
+          setPeerError("방을 찾을 수 없거나 연결 시간이 초과되었습니다.");
+          alert("방을 찾을 수 없거나 연결 시간이 초과되었습니다. 방 코드를 확인해 주세요.");
+          
+          if (peer) {
+            peer.destroy();
+          }
+          peerRef.current = null;
+          connRef.current = null;
+        }
+      }, 8000);
 
       peer.on("open", (id) => {
         peerRef.current = peer;
@@ -332,6 +374,9 @@ export default function Home() {
         connRef.current = conn;
 
         conn.on("open", () => {
+          isConnected = true;
+          if (connectionTimeout) clearTimeout(connectionTimeout);
+
           // 호스트에 JOIN 요청 전송
           const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
           conn.send({
@@ -348,11 +393,15 @@ export default function Home() {
         });
 
         conn.on("close", () => {
+          isConnected = false;
+          if (connectionTimeout) clearTimeout(connectionTimeout);
           alert("방장과의 연결이 끊어졌습니다.");
           resetGameState();
         });
 
         conn.on("error", (err) => {
+          isConnected = false;
+          if (connectionTimeout) clearTimeout(connectionTimeout);
           console.error("Connection error:", err);
           alert("방장과 연결 중 오류가 발생했습니다.");
           resetGameState();
@@ -360,12 +409,16 @@ export default function Home() {
       });
 
       peer.on("error", (err) => {
+        isConnected = false;
+        if (connectionTimeout) clearTimeout(connectionTimeout);
         console.error("PeerJS error:", err);
         setPeerLoading(false);
         setPeerError("방을 찾을 수 없습니다. 참여 코드를 확인해 주세요.");
       });
 
     } catch (e) {
+      isConnected = false;
+      if (connectionTimeout) clearTimeout(connectionTimeout);
       console.error(e);
       setPeerLoading(false);
       setPeerError("실시간 서버 연결 실패.");
