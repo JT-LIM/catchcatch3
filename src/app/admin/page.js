@@ -495,10 +495,14 @@ export default function AdminPage() {
                     </select>
                   </div>
                 </div>
-
                 <button 
                   onClick={() => {
-                    window.location.href = `/?action=create&category=${wordCategory}&time=${roundTime}&rounds=${totalRounds}`;
+                    sessionStorage.setItem("catch_create_room_pending", JSON.stringify({
+                      category: wordCategory,
+                      time: roundTime,
+                      rounds: totalRounds
+                    }));
+                    window.location.href = "/";
                   }} 
                   className="btn-add btn-block"
                   style={{ background: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)", boxShadow: "0 4px 12px rgba(6, 182, 212, 0.3)", marginTop: "1.5rem" }}

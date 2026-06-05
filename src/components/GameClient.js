@@ -212,20 +212,27 @@ export default function Home() {
       }
       await fetchAndSyncWords();
 
-      // 관리자 페이지로부터 넘어온 자동 방 생성 파라미터 체크
+      // 관리자 페이지로부터 넘어온 자동 방 생성 설정 체크 (sessionStorage 방식)
       if (typeof window !== "undefined") {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("action") === "create") {
-          const cat = params.get("category") || "deokso";
-          const time = parseInt(params.get("time") || "60");
-          const rounds = parseInt(params.get("rounds") || "3");
+        const pendingData = sessionStorage.getItem("catch_create_room_pending");
+        if (pendingData) {
+          try {
+            const { category, time, rounds } = JSON.parse(pendingData);
+            console.log("[대기 방 설정] 발견:", { category, time, rounds });
+            
+            setWordCategory(category);
+            setRoundTime(time);
+            setTotalRounds(rounds);
 
-          setWordCategory(cat);
-          setRoundTime(time);
-          setTotalRounds(rounds);
+            // 즉시 중복 생성 방지를 위해 세션 스토리지 정보 클리어
+            sessionStorage.removeItem("catch_create_room_pending");
 
-          // 방을 즉시 생성
-          handleCreateRoom(code);
+            // 방을 즉시 생성
+            console.log("[대기 방 설정] 기반으로 방 생성을 자동 개시합니다. 코드:", code);
+            handleCreateRoom(code);
+          } catch (e) {
+            console.error("[대기 방 설정] 데이터 파싱 오류:", e);
+          }
         }
       }
     };
@@ -240,6 +247,7 @@ export default function Home() {
   // 교사(방장) 방 만들기
   const handleCreateRoom = async (overrideCode) => {
     const activeCode = overrideCode || roomCode;
+    console.log("[방장] 방 개설 시작. 방코드:", activeCode);
     if (!activeCode || activeCode.length !== 4) {
       alert("올바른 참여 코드를 생성해 주세요.");
       return;
@@ -252,16 +260,18 @@ export default function Home() {
     let createTimeout = null;
 
     try {
+      console.log("[방장] PeerJS 모듈 로드 중...");
       const PeerModule = await import("peerjs");
       const Peer = PeerModule.default;
       
       const peerId = `deokso-mq-${activeCode}`;
+      console.log("[방장] Peer 인스턴스 생성 시도. 등록 예정 ID:", peerId);
       const peer = new Peer(peerId);
 
       // 방 생성 제한 시간 설정 (8초)
       createTimeout = setTimeout(() => {
         if (!isCreated) {
-          console.warn("방 생성 타임아웃");
+          console.warn("[방장] 방 생성 응답이 8초간 오지 않아 타임아웃 취소 처리합니다.");
           setPeerLoading(false);
           setPeerError("방 생성 시간이 초과되었습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.");
           alert("방 생성 시간이 초과되었습니다. 네트워크 연결 상태를 확인해주세요.");
@@ -273,6 +283,7 @@ export default function Home() {
       }, 8000);
 
       peer.on("open", () => {
+        console.log("[방장] PeerJS 시그널링 서버 연결 완료! 방 ID 등록 성공:", peerId);
         isCreated = true;
         if (createTimeout) clearTimeout(createTimeout);
         peerRef.current = peer;
@@ -285,28 +296,32 @@ export default function Home() {
 
       // 학생이 접속했을 때의 핸들러
       peer.on("connection", (conn) => {
+        console.log("[방장] 학생 커넥션 감지됨. 학생 Peer ID:", conn.peer);
+        
         conn.on("open", () => {
-          // 학생의 JOIN 이벤트를 대기
+          console.log("[방장] 학생(" + conn.peer + ")과의 WebRTC 데이터 채널 오픈 완료.");
         });
 
         conn.on("data", (data) => {
+          console.log("[방장] 학생(" + conn.peer + ")으로부터 데이터 수신:", data.type);
           handleHostReceiveData(conn, data);
         });
 
         conn.on("close", () => {
+          console.log("[방장] 학생(" + conn.peer + ")과의 연결 닫힘.");
           handlePlayerDisconnect(conn.peer);
         });
 
         conn.on("error", (err) => {
-          console.error("Connection error:", err);
+          console.error("[방장] 학생(" + conn.peer + ") 커넥션 에러 발생:", err);
           handlePlayerDisconnect(conn.peer);
         });
       });
 
       peer.on("error", (err) => {
+        console.error("[방장] PeerJS 자체 에러 발생:", err);
         isCreated = false;
         if (createTimeout) clearTimeout(createTimeout);
-        console.error("PeerJS error:", err);
         setPeerLoading(false);
         if (err.type === "unavailable-id") {
           setPeerError("이미 생성된 방 코드입니다. 다른 코드나 페이지 새로고침 후 다시 시도해주세요.");
@@ -316,9 +331,9 @@ export default function Home() {
       });
 
     } catch (e) {
+      console.error("[방장] handleCreateRoom 내부 예외 발생:", e);
       isCreated = false;
       if (createTimeout) clearTimeout(createTimeout);
-      console.error(e);
       setPeerLoading(false);
       setPeerError("실시간 서버 연결 실패. 잠시 후 다시 시도해 주세요.");
     }
@@ -326,6 +341,7 @@ export default function Home() {
 
   // 학생 방 입장
   const handleJoinRoom = async () => {
+    console.log("[학생] 방 참여 시도 시작. 방코드:", roomCode, ", 닉네임:", nickname);
     if (!roomCode || roomCode.length !== 4) {
       alert("4자리 방 코드를 입력해주세요.");
       return;
@@ -342,21 +358,24 @@ export default function Home() {
     let connectionTimeout = null;
 
     try {
+      console.log("[학생] PeerJS 모듈 로드 중...");
       const PeerModule = await import("peerjs");
       const Peer = PeerModule.default;
 
       // 학생은 무작위 ID 생성
+      console.log("[학생] 무작위 Peer ID 생성 요청 중...");
       const peer = new Peer();
 
       // 연결 제한 시간 설정 (8초)
       connectionTimeout = setTimeout(() => {
         if (!isConnected) {
-          console.warn("방 연결 타임아웃");
+          console.warn("[학생] 8초 동안 방장 피어와의 연결이 완료되지 않아 타임아웃 처리합니다.");
           setPeerLoading(false);
           setPeerError("방을 찾을 수 없거나 연결 시간이 초과되었습니다.");
           alert("방을 찾을 수 없거나 연결 시간이 초과되었습니다. 방 코드를 확인해 주세요.");
           
           if (peer) {
+            console.log("[학생] 타임아웃으로 인해 생성된 Peer 객체를 파괴합니다.");
             peer.destroy();
           }
           peerRef.current = null;
@@ -365,20 +384,24 @@ export default function Home() {
       }, 8000);
 
       peer.on("open", (id) => {
+        console.log("[학생] PeerJS 시그널링 서버 연결 완료! 부여된 내 Peer ID:", id);
         peerRef.current = peer;
         setIsHost(false);
         
         // 교사의 Peer ID로 연결 요청
         const hostPeerId = `deokso-mq-${roomCode}`;
+        console.log("[학생] 방장 피어(" + hostPeerId + ")와 직접 WebRTC 접속을 시도합니다...");
         const conn = peer.connect(hostPeerId);
         connRef.current = conn;
 
         conn.on("open", () => {
+          console.log("[학생] 방장 피어와 WebRTC 데이터 채널 연결 성공!");
           isConnected = true;
           if (connectionTimeout) clearTimeout(connectionTimeout);
 
           // 호스트에 JOIN 요청 전송
           const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
+          console.log("[학생] 방장에게 JOIN 시그널을 발송합니다. 닉네임:", nickname.trim());
           conn.send({
             type: "JOIN",
             nickname: nickname.trim(),
@@ -389,10 +412,12 @@ export default function Home() {
         });
 
         conn.on("data", (data) => {
+          console.log("[학생] 방장으로부터 데이터 수신:", data.type);
           handleClientReceiveData(data);
         });
 
         conn.on("close", () => {
+          console.warn("[학생] 방장과의 커넥션이 닫혔습니다.");
           isConnected = false;
           if (connectionTimeout) clearTimeout(connectionTimeout);
           alert("방장과의 연결이 끊어졌습니다.");
@@ -400,26 +425,26 @@ export default function Home() {
         });
 
         conn.on("error", (err) => {
+          console.error("[학생] 방장 커넥션 에러 발생:", err);
           isConnected = false;
           if (connectionTimeout) clearTimeout(connectionTimeout);
-          console.error("Connection error:", err);
           alert("방장과 연결 중 오류가 발생했습니다.");
           resetGameState();
         });
       });
 
       peer.on("error", (err) => {
+        console.error("[학생] PeerJS 자체 에러 발생:", err);
         isConnected = false;
         if (connectionTimeout) clearTimeout(connectionTimeout);
-        console.error("PeerJS error:", err);
         setPeerLoading(false);
         setPeerError("방을 찾을 수 없습니다. 참여 코드를 확인해 주세요.");
       });
 
     } catch (e) {
+      console.error("[학생] handleJoinRoom 내부 예외 발생:", e);
       isConnected = false;
       if (connectionTimeout) clearTimeout(connectionTimeout);
-      console.error(e);
       setPeerLoading(false);
       setPeerError("실시간 서버 연결 실패.");
     }
