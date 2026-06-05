@@ -246,7 +246,7 @@ export default function Home() {
 
   // 교사(방장) 방 만들기
   const handleCreateRoom = async (overrideCode) => {
-    const activeCode = overrideCode || roomCode;
+    const activeCode = (overrideCode || roomCode).trim();
     console.log("[방장] 방 개설 시작. 방코드:", activeCode);
     if (!activeCode || activeCode.length !== 4) {
       alert("올바른 참여 코드를 생성해 주세요.");
@@ -266,7 +266,30 @@ export default function Home() {
       
       const peerId = `deokso-mq-${activeCode}`;
       console.log("[방장] Peer 인스턴스 생성 시도. 등록 예정 ID:", peerId);
-      const peer = new Peer(peerId);
+      const peer = new Peer(peerId, {
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:openrelay.metered.ca:80" },
+            { 
+              urls: "turn:openrelay.metered.ca:80",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            },
+            { 
+              urls: "turn:openrelay.metered.ca:443",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            },
+            { 
+              urls: "turn:openrelay.metered.ca:443?transport=tcp",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            }
+          ]
+        }
+      });
 
       // 방 생성 제한 시간 설정 (8초)
       createTimeout = setTimeout(() => {
@@ -341,12 +364,14 @@ export default function Home() {
 
   // 학생 방 입장
   const handleJoinRoom = async () => {
-    console.log("[학생] 방 참여 시도 시작. 방코드:", roomCode, ", 닉네임:", nickname);
-    if (!roomCode || roomCode.length !== 4) {
+    const cleanRoomCode = roomCode.trim();
+    const cleanNickname = nickname.trim();
+    console.log("[학생] 방 참여 시도 시작. 방코드:", cleanRoomCode, ", 닉네임:", cleanNickname);
+    if (!cleanRoomCode || cleanRoomCode.length !== 4) {
       alert("4자리 방 코드를 입력해주세요.");
       return;
     }
-    if (!nickname.trim()) {
+    if (!cleanNickname) {
       alert("닉네임을 입력해주세요.");
       return;
     }
@@ -364,7 +389,30 @@ export default function Home() {
 
       // 학생은 무작위 ID 생성
       console.log("[학생] 무작위 Peer ID 생성 요청 중...");
-      const peer = new Peer();
+      const peer = new Peer({
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:openrelay.metered.ca:80" },
+            { 
+              urls: "turn:openrelay.metered.ca:80",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            },
+            { 
+              urls: "turn:openrelay.metered.ca:443",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            },
+            { 
+              urls: "turn:openrelay.metered.ca:443?transport=tcp",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            }
+          ]
+        }
+      });
 
       // 연결 제한 시간 설정 (8초)
       connectionTimeout = setTimeout(() => {
@@ -389,27 +437,35 @@ export default function Home() {
         setIsHost(false);
         
         // 교사의 Peer ID로 연결 요청
-        const hostPeerId = `deokso-mq-${roomCode}`;
+        const hostPeerId = `deokso-mq-${cleanRoomCode}`;
         console.log("[학생] 방장 피어(" + hostPeerId + ")와 직접 WebRTC 접속을 시도합니다...");
         const conn = peer.connect(hostPeerId);
         connRef.current = conn;
 
-        conn.on("open", () => {
+        const handleConnected = () => {
           console.log("[학생] 방장 피어와 WebRTC 데이터 채널 연결 성공!");
           isConnected = true;
           if (connectionTimeout) clearTimeout(connectionTimeout);
 
           // 호스트에 JOIN 요청 전송
           const randomAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
-          console.log("[학생] 방장에게 JOIN 시그널을 발송합니다. 닉네임:", nickname.trim());
+          console.log("[학생] 방장에게 JOIN 시그널을 발송합니다. 닉네임:", cleanNickname);
           conn.send({
             type: "JOIN",
-            nickname: nickname.trim(),
+            nickname: cleanNickname,
             avatar: randomAvatar
           });
           setGameStage("WAITING");
           setPeerLoading(false);
-        });
+        };
+
+        if (conn.open) {
+          handleConnected();
+        } else {
+          conn.on("open", () => {
+            handleConnected();
+          });
+        }
 
         conn.on("data", (data) => {
           console.log("[학생] 방장으로부터 데이터 수신:", data.type);
