@@ -71,6 +71,11 @@ export default function Home() {
   const peerRef = useRef(null);
   const connRef = useRef(null); // 학생용: 교사와의 connection 저장
   const connectionsMapRef = useRef(new Map()); // 교사용: 학생 id -> connection 맵
+  const isHostRef = useRef(false);
+  const updateIsHost = (val) => {
+    setIsHost(val);
+    isHostRef.current = val;
+  };
   const playerIdRef = useRef(""); // 학생 본인의 고유 세션 ID
   const playersStateRef = useRef([]); // 스코어 보드 실시간 정렬 감시용
   const timerIntervalRef = useRef(null);
@@ -325,8 +330,8 @@ export default function Home() {
       }
 
       // 출제자 원본 제시어 보이기 분기
-      const isMeDrawer = (!isHost && playerIdRef.current === data.drawerId) || (isHost && data.drawerId === "host");
-      if (isHost || isMeDrawer) {
+      const isMeDrawer = (!isHostRef.current && playerIdRef.current === data.drawerId) || (isHostRef.current && data.drawerId === "host");
+      if (isHostRef.current || isMeDrawer) {
         setCurrentWord(data.currentWord);
         currentWordRef.current = data.currentWord;
       } else {
@@ -368,7 +373,7 @@ export default function Home() {
             const docData = change.doc.data();
 
             // 내가 출제자라면 직접 그리고 있으므로 수신 드로잉 그릴 필요 없음
-            const isMeDrawer = (!isHost && playerIdRef.current === drawerId) || (isHost && drawerId === "host");
+            const isMeDrawer = (!isHostRef.current && playerIdRef.current === drawerId) || (isHostRef.current && drawerId === "host");
             
             // drawerId가 상태 반영 딜레이로 빈 값일 수 있으므로 Firestore 문서에 drawerId가 있으면 비교
             const docDrawerId = snapshot.docs[0]?.ref.parent.parent ? snapshot.docs[0].ref.parent.parent.id : null; // 호환성용
@@ -480,7 +485,7 @@ export default function Home() {
         });
 
         // 5. 실시간 리스너 작동 및 방장 역할 설정
-        setIsHost(true);
+        updateIsHost(true);
         setRoomCode(activeCode);
         subscribeRoomData(activeCode);
         
@@ -551,7 +556,7 @@ export default function Home() {
           isCreated = true;
           if (createTimeout) clearTimeout(createTimeout);
           peerRef.current = peer;
-          setIsHost(true);
+          updateIsHost(true);
           setGameStage("WAITING");
           setPlayers([{ id: "host", name: "선생님 (방장)", score: 0, avatar: "🎓", isConnected: true }]);
           playersStateRef.current = [{ id: "host", name: "선생님 (방장)", score: 0, avatar: "🎓", isConnected: true }];
@@ -659,7 +664,7 @@ export default function Home() {
         });
 
         // 4. 실시간 리스너 작동 및 게임 대기실 진입
-        setIsHost(false);
+        updateIsHost(false);
         setRoomCode(cleanRoomCode);
         subscribeRoomData(cleanRoomCode);
 
@@ -727,7 +732,7 @@ export default function Home() {
         peer.on("open", (id) => {
           console.log("[학생] PeerJS 시그널링 서버 연결 완료! 부여된 내 Peer ID:", id);
           peerRef.current = peer;
-          setIsHost(false);
+          updateIsHost(false);
           
           // 교사의 Peer ID로 연결 요청
           const hostPeerId = `deokso-mq-${cleanRoomCode}`;
@@ -831,7 +836,7 @@ export default function Home() {
     }
 
     setGameStage("LOBBY");
-    setIsHost(false);
+    updateIsHost(false);
     setPlayers([]);
     setChatMessages([]);
     setCurrentRound(1);
@@ -1176,6 +1181,175 @@ export default function Home() {
           });
         }
       }
+    }
+  };
+
+  // 방장 전용 채팅 모니터링 및 정답 실시간 판독 리스너 (Firestore 모드용)
+  const startHostChatMonitoring = (roomCodeStr) => {
+    const chatsCol = collection(db, "catch_rooms", roomCodeStr, "chats");
+    const q = query(chatsCol, orderBy("timestamp", "asc"));
+
+    let isInitLoad = true;
+
+    const chatMonitorUnsub = onSnapshot(q, async (snapshot) => {
+      if (isInitLoad) {
+        // 최초 로드 시 이미 지나간 채팅은 정답 채점에서 배제
+        isInitLoad = false;
+        return;
+      }
+
+      // 새로 추가된 채팅 판독
+      const changes = snapshot.docChanges();
+      for (const change of changes) {
+        if (change.type === "added") {
+          const chatData = change.doc.data();
+          
+          // 시스템 메시지이거나, 현재 라운드가 그리기 중이 아니면 무시
+          if (chatData.type === "system" || chatData.isDrawer) continue;
+
+          const cleanGuess = (chatData.text || "").trim().replace(/\s+/g, "");
+          const cleanAnswer = currentWordRef.current.trim().replace(/\s+/g, "");
+
+          // 현재 상태가 DRAWING 이고 단어가 일치한다면 정답 처리!
+          const roomRef = doc(db, "catch_rooms", roomCodeStr);
+          const roomSnap = await getDocs(query(collection(db, "catch_rooms"), where("__name__", "==", roomCodeStr)));
+          if (roomSnap.empty) continue;
+          
+          const currentRoomStatus = roomSnap.docs[0].data();
+
+          if (currentRoomStatus.turnStatus === "DRAWING" && currentRoomStatus.status === "PLAYING" && cleanGuess === cleanAnswer) {
+            console.log(`[정답 판독 성공] 맞춘 사람: ${chatData.sender}, 단어: ${currentWordRef.current}`);
+            
+            // 점수 계산 (방장 로컬에 남은 시간 기준 가산)
+            const basePoints = 100;
+            const speedBonus = Math.floor(timeLeft * 1.5);
+            const earnedScore = basePoints + speedBonus;
+
+            // 정답을 맞춘 학생 및 출제자에게 Firestore 점수 가산
+            try {
+              // 1. 맞춘 사람 점수 증가
+              if (chatData.playerId) {
+                const winnerDoc = doc(db, "catch_rooms", roomCodeStr, "players", chatData.playerId);
+                const prevWinnerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", chatData.playerId)));
+                if (!prevWinnerSnap.empty) {
+                  await updateDoc(winnerDoc, { score: (prevWinnerSnap.docs[0].data().score || 0) + earnedScore });
+                }
+              }
+
+              // 2. 출제자 점수 증가 (+50점)
+              if (currentRoomStatus.drawerId && currentRoomStatus.drawerId !== "host") {
+                const drawerDoc = doc(db, "catch_rooms", roomCodeStr, "players", currentRoomStatus.drawerId);
+                const prevDrawerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", currentRoomStatus.drawerId)));
+                if (!prevDrawerSnap.empty) {
+                  await updateDoc(drawerDoc, { score: (prevDrawerSnap.docs[0].data().score || 0) + 50 });
+                }
+              }
+
+              // 3. 시스템 정답 알림 채팅 등록
+              await addDoc(collection(db, "catch_rooms", roomCodeStr, "chats"), {
+                sender: "SYSTEM",
+                text: `🎉 ${chatData.sender}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`,
+                type: "system",
+                timestamp: serverTimestamp()
+              });
+
+              // 4. 방 상태를 정답 결과 노출 단계(TRANSITION)로 업데이트
+              await updateDoc(roomRef, {
+                turnStatus: "TRANSITION",
+                transitionMsg: `🎉 ${chatData.sender}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`
+              });
+
+              // 타이머 정지 후 5초 후 다음 턴 전환
+              if (localTimerRef.current) clearInterval(localTimerRef.current);
+              if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+
+              setTimeout(() => {
+                nextTurn();
+              }, 5000);
+
+            } catch (err) {
+              console.error("정답 처리 가산 중 데이터베이스 에러:", err);
+            }
+          }
+        }
+      }
+    });
+
+    // 방장 모니터링 취소 리스너 등록
+    unsubsRef.current.push(chatMonitorUnsub);
+  };
+
+  // 피어 채팅 수신 및 정답 판독기 (WebRTC P2P 모드용)
+  const handleReceivedChatMessage = (senderId, text) => {
+    // 발신 플레이어 찾기
+    const sender = playersStateRef.current.find((p) => p.id === senderId);
+    if (!sender) return;
+
+    const isDrawer = senderId === drawerId;
+    const cleanGuess = text.trim().replace(/\s+/g, "");
+    const cleanAnswer = currentWordRef.current.trim().replace(/\s+/g, "");
+
+    // 정답 체크 로직 실행 (출제자가 아니며, 진행 중일 때만 정답 검증)
+    if (!isDrawer && turnStatus === "DRAWING" && cleanGuess === cleanAnswer) {
+      const basePoints = 100;
+      const speedBonus = Math.floor(timeLeft * 1.5);
+      const earnedScore = basePoints + speedBonus;
+
+      // 점수 가산
+      const updated = playersStateRef.current.map((p) => {
+        if (p.id === senderId) {
+          return { ...p, score: p.score + earnedScore };
+        }
+        if (p.id === drawerId) {
+          return { ...p, score: p.score + 50 };
+        }
+        return p;
+      });
+
+      playersStateRef.current = updated;
+      setPlayers(updated);
+
+      // 교사(호스트)가 업데이트된 플레이어 점수 목록을 학생들에게 즉시 브로드캐스트
+      broadcastToAll({
+        type: "PLAYER_LIST",
+        players: updated
+      });
+
+      // 정답 맞춤 신호 전송
+      broadcastToAll({
+        type: "CORRECT_ANSWER",
+        winnerName: sender.name,
+        points: earnedScore,
+        word: currentWordRef.current
+      });
+
+      playSound("correct");
+      setTurnStatus("TRANSITION");
+      setTransitionMsg(`🎉 ${sender.name}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`);
+      addSystemChatMessage(`🎉 ${sender.name}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`);
+
+      // 타이머 종료 및 다음 턴 대기
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      setTimeout(() => {
+        nextTurn();
+      }, 5000);
+
+    } else {
+      // 일반 채팅 브로드캐스트
+      broadcastToAll({
+        type: "CHAT_BROADCAST",
+        senderName: sender.name,
+        text,
+        isDrawer
+      });
+
+      // 호스트 화면에 표시
+      addChatMessage({
+        id: Math.random().toString(),
+        sender: sender.name,
+        text,
+        isDrawer
+      });
     }
   };
 
