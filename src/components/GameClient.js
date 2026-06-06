@@ -28,7 +28,7 @@ import { getAuth, signInAnonymously } from "firebase/auth";
 // - true : Firestore 실시간 동기화 방식 (학교 스쿨넷/방화벽 우회용)
 // - false: 기존 WebRTC P2P (PeerJS) 방식 (저지연 다이렉트 통신)
 // ==========================================
-const USE_FIRESTORE_SYNC = false; // 이 값만 바꾸면 두 방식을 자유롭게 오갈 수 있습니다.
+const USE_FIRESTORE_SYNC = true; // 이 값만 바꾸면 두 방식을 자유롭게 오갈 수 있습니다.
 
 // 랜덤 이모지 아바타 할당용
 const AVATARS = ["🐶", "🐱", "🦁", "🐯", "🦊", "🐨", "🐼", "🐸", "🐰", "🐵", "🐥", "🐬", "🦄", "🐙", "🦖"];
