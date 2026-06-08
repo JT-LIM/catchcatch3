@@ -2080,6 +2080,18 @@ export default function Home() {
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <span style={{ 
+              background: "rgba(56, 189, 248, 0.15)", 
+              border: "1px solid rgba(56, 189, 248, 0.3)", 
+              color: "#38bdf8", 
+              fontWeight: "bold", 
+              padding: "0.3rem 0.75rem", 
+              borderRadius: "8px",
+              fontSize: "0.9rem",
+              letterSpacing: "0.05em"
+            }}>
+              참여 코드: {roomCode}
+            </span>
             <span className="status-badge connected">
               {isHost ? "선생님 방장" : "참가 학생"}
             </span>
