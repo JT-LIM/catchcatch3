@@ -943,7 +943,8 @@ export default function Home() {
           name: data.nickname,
           score: 0,
           avatar: data.avatar,
-          isConnected: true
+          isConnected: true,
+          joinedAt: Date.now()
         };
 
         connectionsMapRef.current.set(studentId, conn);
@@ -1523,7 +1524,14 @@ export default function Home() {
   // 새 턴 시작 처리 (방장/호스트만 수행하여 DB/네트워크 갱신)
   const startNewTurn = async () => {
     isTransitioningRef.current = false;
-    const candidates = playersStateRef.current.filter((p) => p.id !== "host");
+    // 점수순 정렬에 흔들리지 않도록 입장 순서(joinedAt)로 고정 정렬하여 턴 순서 보장
+    const candidates = playersStateRef.current
+      .filter((p) => p.id !== "host")
+      .sort((a, b) => {
+        const timeA = a.joinedAt?.toMillis ? a.joinedAt.toMillis() : (a.joinedAt || 0);
+        const timeB = b.joinedAt?.toMillis ? b.joinedAt.toMillis() : (b.joinedAt || 0);
+        return timeA - timeB;
+      });
     if (candidates.length === 0) return;
     
     let drawerIdx = activeDrawerIndexRef.current;
@@ -1701,7 +1709,14 @@ export default function Home() {
     turnIndexRef.current += 1;
     activeDrawerIndexRef.current += 1;
 
-    const studentCandidates = playersStateRef.current.filter((p) => p.id !== "host");
+    // 점수순 정렬에 흔들리지 않도록 입장 순서(joinedAt)로 고정 정렬하여 턴 순서 보장
+    const studentCandidates = playersStateRef.current
+      .filter((p) => p.id !== "host")
+      .sort((a, b) => {
+        const timeA = a.joinedAt?.toMillis ? a.joinedAt.toMillis() : (a.joinedAt || 0);
+        const timeB = b.joinedAt?.toMillis ? b.joinedAt.toMillis() : (b.joinedAt || 0);
+        return timeA - timeB;
+      });
 
     if (activeDrawerIndexRef.current >= studentCandidates.length) {
       activeDrawerIndexRef.current = 0;
