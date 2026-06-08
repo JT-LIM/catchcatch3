@@ -20,6 +20,7 @@ const BUILD_TIME = "2026-06-05 16:35";
 
 const DEFAULT_CATEGORIES = {
   deokso: "🏫 덕소중학교 스페셜",
+  class2: "✏️ 2반 스페셜 & 덕소중 상식",
   class7: "✏️ 7반 스페셜 & 우리나라 상식",
   animals: "🦁 동물 & 식물",
   food: "🍕 맛있는 음식",

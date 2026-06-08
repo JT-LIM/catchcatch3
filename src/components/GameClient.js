@@ -241,6 +241,7 @@ export default function Home() {
       
       const newCategories = {
         deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
+        class2: { name: "✏️ 2반 스페셜 & 덕소중 상식", words: [] },
         class7: { name: "✏️ 7반 스페셜 & 우리나라 상식", words: [] },
         animals: { name: "🦁 동물 & 식물", words: [] },
         food: { name: "🍕 맛있는 음식", words: [] },
