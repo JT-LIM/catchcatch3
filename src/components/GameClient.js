@@ -386,9 +386,20 @@ export default function Home() {
     const roomUnsub = onSnapshot(doc(db, "catch_rooms", cleanCode), (snapshot) => {
       if (!snapshot.exists()) {
         console.log("방이 존재하지 않습니다.");
+        if (!isHostRef.current) {
+          alert("방이 존재하지 않거나 닫혔습니다.");
+          resetGameState();
+        }
         return;
       }
       const data = snapshot.data();
+
+      // 방장이 방을 닫은 경우 학생 퇴장 처리
+      if (data.status === "OVER" && data.transitionMsg === "방장이 방을 닫았습니다." && !isHostRef.current) {
+        alert("방장이 방을 닫았습니다.");
+        resetGameState();
+        return;
+      }
 
       setGameStage(data.status);
       setWordCategory(data.category);
@@ -919,15 +930,23 @@ export default function Home() {
     connRef.current = null;
     connectionsMapRef.current.clear();
 
-    // 3. 방 폭파 안내 메시지 남기기 (Firestore 모드 방장인 경우)
-    if (USE_FIRESTORE_SYNC && isHost && roomCodeRef.current) {
-      try {
-        await updateDoc(doc(db, "catch_rooms", roomCodeRef.current), {
-          status: "OVER",
-          transitionMsg: "방장이 방을 닫았습니다."
-        });
-      } catch (e) {
-        console.warn(e);
+    // 3. 방 폭파 안내 메시지 남기기 (Firestore 모드 방장인 경우) / 플레이어 퇴장 처리 (학생인 경우)
+    if (USE_FIRESTORE_SYNC && roomCodeRef.current) {
+      if (isHost) {
+        try {
+          await updateDoc(doc(db, "catch_rooms", roomCodeRef.current), {
+            status: "OVER",
+            transitionMsg: "방장이 방을 닫았습니다."
+          });
+        } catch (e) {
+          console.warn(e);
+        }
+      } else if (playerIdRef.current) {
+        try {
+          await deleteDoc(doc(db, "catch_rooms", roomCodeRef.current, "players", playerIdRef.current));
+        } catch (e) {
+          console.warn("학생 플레이어 퇴장 처리 실패:", e);
+        }
       }
     }
 
