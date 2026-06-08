@@ -79,6 +79,7 @@ export default function Home() {
   const [drawerName, setDrawerName] = useState("");
   const [currentWord, setCurrentWord] = useState("");
   const [wordLength, setWordLength] = useState(0);
+  const [tempShowWord, setTempShowWord] = useState(false);
   const [wordHint, setWordHint] = useState(""); // 글자수 자릿수 표시
 
   const [timeLeft, setTimeLeftState] = useState(60);
@@ -1524,6 +1525,7 @@ export default function Home() {
   // 새 턴 시작 처리 (방장/호스트만 수행하여 DB/네트워크 갱신)
   const startNewTurn = async () => {
     isTransitioningRef.current = false;
+    setTempShowWord(false);
     // 점수순 정렬에 흔들리지 않도록 입장 순서(joinedAt)로 고정 정렬하여 턴 순서 보장
     const candidates = playersStateRef.current
       .filter((p) => p.id !== "host")
@@ -2069,7 +2071,31 @@ export default function Home() {
                   </span>
                   
                   {checkIsDrawer() || isHost ? (
-                    <span className="word-value">{currentWord}</span>
+                    isHost ? (
+                      <span className="word-value">{currentWord}</span>
+                    ) : (
+                      timeLeft > 58 || tempShowWord ? (
+                        <span className="word-value" style={{ color: "var(--success-color)" }}>{currentWord}</span>
+                      ) : (
+                        <span 
+                          className="word-value" 
+                          style={{ 
+                            fontSize: "0.95rem", 
+                            color: "var(--text-muted)", 
+                            cursor: "pointer", 
+                            border: "1px dashed rgba(255,255,255,0.2)",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: "4px"
+                          }}
+                          onMouseEnter={() => setTempShowWord(true)}
+                          onMouseLeave={() => setTempShowWord(false)}
+                          onTouchStart={() => setTempShowWord(true)}
+                          onTouchEnd={() => setTempShowWord(false)}
+                        >
+                          👁️ 마우스 오버/터치 시 보기
+                        </span>
+                      )
+                    )
                   ) : (
                     <span className="word-value is-hint" style={{ fontSize: timeLeft > 40 ? "1.2rem" : "1.8rem" }}>
                       {timeLeft > 40 ? "🔒 20초 후 글자 수 공개" : wordHint}
