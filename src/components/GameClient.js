@@ -72,6 +72,7 @@ export default function Home() {
   const connRef = useRef(null); // 학생용: 교사와의 connection 저장
   const connectionsMapRef = useRef(new Map()); // 교사용: 학생 id -> connection 맵
   const isHostRef = useRef(false);
+  const isTransitioningRef = useRef(false);
   const updateIsHost = (val) => {
     setIsHost(val);
     isHostRef.current = val;
@@ -848,6 +849,7 @@ export default function Home() {
     setTimeLeft(60);
     setTurnStatus("DRAWING");
     usedWordsRef.current.clear();
+    isTransitioningRef.current = false;
   };
 
   // 교사(호스트)가 학생 연결 끊김을 감지했을 때 (WebRTC 전용)
@@ -1218,6 +1220,8 @@ export default function Home() {
           const currentRoomStatus = roomSnap.docs[0].data();
 
           if (currentRoomStatus.turnStatus === "DRAWING" && currentRoomStatus.status === "PLAYING" && cleanGuess === cleanAnswer) {
+            if (isTransitioningRef.current) continue;
+            isTransitioningRef.current = true;
             console.log(`[정답 판독 성공] 맞춘 사람: ${chatData.sender}, 단어: ${currentWordRef.current}`);
             
             // 점수 계산 (방장 로컬에 남은 시간 기준 가산)
@@ -1291,6 +1295,8 @@ export default function Home() {
 
     // 정답 체크 로직 실행 (출제자가 아니며, 진행 중일 때만 정답 검증)
     if (!isDrawer && turnStatus === "DRAWING" && cleanGuess === cleanAnswer) {
+      if (isTransitioningRef.current) return;
+      isTransitioningRef.current = true;
       const basePoints = 100;
       const speedBonus = Math.floor(timeLeft * 1.5);
       const earnedScore = basePoints + speedBonus;
@@ -1423,6 +1429,7 @@ export default function Home() {
 
   // 새 턴 시작 처리 (방장/호스트만 수행하여 DB/네트워크 갱신)
   const startNewTurn = async () => {
+    isTransitioningRef.current = false;
     const candidates = playersStateRef.current.filter((p) => p.id !== "host");
     if (candidates.length === 0) return;
     
@@ -1546,6 +1553,8 @@ export default function Home() {
 
   // 시간 초과 처리 (호스트만 수행)
   const handleTimeOut = async () => {
+    if (isTransitioningRef.current) return;
+    isTransitioningRef.current = true;
     if (USE_FIRESTORE_SYNC) {
       try {
         // 1. 시간초과 시스템 안내 추가
@@ -1967,22 +1976,35 @@ export default function Home() {
 
                 {/* 라운드 전환 (답 확인) 오버레이 화면 */}
                 {turnStatus === "TRANSITION" && (
-                  <div className="canvas-overlay-msg" style={{ background: "rgba(10, 14, 26, 0.95)" }}>
-                    <p className="overlay-title" style={{ fontSize: "2.4rem", color: "var(--warning-color)" }}>
-                      ROUND RESULT
+                  <div className="canvas-overlay-msg" style={{ background: "rgba(10, 14, 26, 0.96)" }}>
+                    <p className="overlay-title" style={{ 
+                      fontSize: "2.8rem", 
+                      fontWeight: "900",
+                      color: transitionMsg.includes("정답") ? "#10b981" : "var(--warning-color)",
+                      textShadow: transitionMsg.includes("정답") 
+                        ? "0 0 25px rgba(16, 185, 129, 0.6)" 
+                        : "0 0 25px rgba(245, 158, 11, 0.6)"
+                    }}>
+                      {transitionMsg.includes("정답") ? "🎉 CORRECT ANSWER 🎉" : "⏰ TIME OUT"}
                     </p>
-                    <p className="overlay-desc" style={{ fontSize: "1.4rem", fontWeight: "700", margin: "1rem 0" }}>
+                    <p className="overlay-desc" style={{ 
+                      fontSize: "1.5rem", 
+                      fontWeight: "800", 
+                      margin: "1.5rem 0",
+                      lineHeight: "1.6",
+                      color: "#f8fafc"
+                    }}>
                       {transitionMsg}
                     </p>
                     <div style={{ 
                       width: "60px", 
                       height: "60px", 
                       border: "4px solid rgba(255,255,255,0.1)", 
-                      borderTopColor: "var(--accent-color)", 
+                      borderTopColor: transitionMsg.includes("정답") ? "#10b981" : "var(--accent-color)", 
                       borderRadius: "50%", 
                       animation: "spin 1s linear infinite" 
                     }} />
-                    <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>잠시 후 다음 턴이 시작됩니다...</p>
+                    <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "1rem" }}>잠시 후 다음 턴이 시작됩니다...</p>
                   </div>
                 )}
               </div>
