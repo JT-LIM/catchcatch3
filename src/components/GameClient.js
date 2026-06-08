@@ -283,6 +283,7 @@ export default function Home() {
         deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
         class2: { name: "✏️ 2반 스페셜 & 덕소중 상식", words: [] },
         class7: { name: "✏️ 7반 스페셜 & 우리나라 상식", words: [] },
+        class8: { name: "✏️ 8반 스페셜 & 덕소중 상식", words: [] },
         animals: { name: "🦁 동물 & 식물", words: [] },
         food: { name: "🍕 맛있는 음식", words: [] },
         knowledge: { name: "🧠 교과 및 일반상식", words: [] }
