@@ -19,6 +19,7 @@ const BUILD_TIME = "2026-06-05 16:35";
 
 const DEFAULT_CATEGORIES = {
   deokso: "🏫 덕소중학교 스페셜",
+  class7: "✏️ 7반 스페셜 & 우리나라 상식",
   animals: "🦁 동물 & 식물",
   food: "🍕 맛있는 음식",
   knowledge: "🧠 교과 및 일반상식"
@@ -500,6 +501,8 @@ export default function AdminPage() {
                       <option value={2}>2 라운드</option>
                       <option value={3}>3 라운드</option>
                       <option value={5}>5 라운드</option>
+                      <option value={10}>10 라운드</option>
+                      <option value={20}>20 라운드</option>
                     </select>
                   </div>
                 </div>

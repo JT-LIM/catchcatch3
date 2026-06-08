@@ -8,6 +8,7 @@ import { db } from "@/utils/firebase";
 import { 
   collection, 
   getDocs, 
+  getDoc,
   addDoc, 
   serverTimestamp,
   doc,
@@ -42,7 +43,14 @@ export default function Home() {
   // 로비 상태 및 입력 값
   const [gameStage, setGameStage] = useState("LOBBY"); // LOBBY, WAITING, PLAYING, OVER
   const [isHost, setIsHost] = useState(false);
-  const [roomCode, setRoomCode] = useState("");
+
+  const [roomCode, setRoomCodeState] = useState("");
+  const roomCodeRef = useRef("");
+  const setRoomCode = (val) => {
+    setRoomCodeState(val);
+    roomCodeRef.current = val;
+  };
+
   const [nickname, setNickname] = useState("");
   const [players, setPlayers] = useState([]); // { id, name, score, avatar, isConnected }
   
@@ -52,15 +60,41 @@ export default function Home() {
   const [totalRounds, setTotalRounds] = useState(3);
 
   // 진행 중인 게임 상태
-  const [currentRound, setCurrentRound] = useState(1);
+  const [currentRound, setCurrentRoundState] = useState(1);
+  const currentRoundRef = useRef(1);
+  const setCurrentRound = (val) => {
+    setCurrentRoundState(val);
+    currentRoundRef.current = val;
+  };
+
   const [currentTurn, setCurrentTurn] = useState(0);
-  const [drawerId, setDrawerId] = useState("");
+
+  const [drawerId, setDrawerIdState] = useState("");
+  const drawerIdRef = useRef("");
+  const setDrawerId = (val) => {
+    setDrawerIdState(val);
+    drawerIdRef.current = val;
+  };
+
   const [drawerName, setDrawerName] = useState("");
   const [currentWord, setCurrentWord] = useState("");
   const [wordLength, setWordLength] = useState(0);
   const [wordHint, setWordHint] = useState(""); // 글자수 자릿수 표시
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [turnStatus, setTurnStatus] = useState("DRAWING"); // DRAWING, TRANSITION
+
+  const [timeLeft, setTimeLeftState] = useState(60);
+  const timeLeftRef = useRef(60);
+  const setTimeLeft = (val) => {
+    setTimeLeftState(val);
+    timeLeftRef.current = val;
+  };
+
+  const [turnStatus, setTurnStatusState] = useState("DRAWING"); // DRAWING, TRANSITION
+  const turnStatusRef = useRef("DRAWING");
+  const setTurnStatus = (val) => {
+    setTurnStatusState(val);
+    turnStatusRef.current = val;
+  };
+
   const [transitionMsg, setTransitionMsg] = useState("");
   
   // 채팅 상태
@@ -174,23 +208,31 @@ export default function Home() {
         loadedWordsList.push(doc.data());
       });
       
-      if (loadedWordsList.length === 0) {
-        console.log("Seeding Firestore with default word list...");
-        const promises = [];
-        for (const [catKey, catVal] of Object.entries(WORD_CATEGORIES)) {
-          for (const wordText of catVal.words) {
-            promises.push(
-              addDoc(wordsCol, {
-                word: wordText,
-                category: catKey,
-                createdAt: serverTimestamp()
-              })
-            );
+      // 스마트 동기화: 로컬 WORD_CATEGORIES 중 DB에 없는 단어를 추가로 업로드
+      const dbWordSet = new Set(loadedWordsList.map(w => `${w.category}:${w.word}`));
+      const missingWords = [];
+      for (const [catKey, catVal] of Object.entries(WORD_CATEGORIES)) {
+        for (const wordText of catVal.words) {
+          if (!dbWordSet.has(`${catKey}:${wordText}`)) {
+            missingWords.push({ category: catKey, word: wordText });
           }
         }
+      }
+
+      if (missingWords.length > 0) {
+        console.log(`Syncing local words to Firestore... Adding ${missingWords.length} new words.`);
+        const promises = missingWords.map(item => {
+          return addDoc(wordsCol, {
+            word: item.word,
+            category: item.category,
+            createdAt: serverTimestamp()
+          });
+        });
         await Promise.all(promises);
         
+        // 새로 추가된 단어가 있으므로 리로드
         const reSnapshot = await getDocs(wordsCol);
+        loadedWordsList = [];
         reSnapshot.forEach((doc) => {
           loadedWordsList.push(doc.data());
         });
@@ -198,6 +240,7 @@ export default function Home() {
       
       const newCategories = {
         deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
+        class7: { name: "✏️ 7반 스페셜 & 우리나라 상식", words: [] },
         animals: { name: "🦁 동물 & 식물", words: [] },
         food: { name: "🍕 맛있는 음식", words: [] },
         knowledge: { name: "🧠 교과 및 일반상식", words: [] }
@@ -826,9 +869,9 @@ export default function Home() {
     connectionsMapRef.current.clear();
 
     // 3. 방 폭파 안내 메시지 남기기 (Firestore 모드 방장인 경우)
-    if (USE_FIRESTORE_SYNC && isHost && roomCode) {
+    if (USE_FIRESTORE_SYNC && isHost && roomCodeRef.current) {
       try {
-        await updateDoc(doc(db, "catch_rooms", roomCode), {
+        await updateDoc(doc(db, "catch_rooms", roomCodeRef.current), {
           status: "OVER",
           transitionMsg: "방장이 방을 닫았습니다."
         });
@@ -1132,8 +1175,8 @@ export default function Home() {
 
     if (USE_FIRESTORE_SYNC) {
       // 그리기 전송 버퍼 타이머가 켜져 있지 않다면 시작
-      if (!drawingIntervalRef.current && roomCode) {
-        startDrawingSync(roomCode);
+      if (!drawingIntervalRef.current && roomCodeRef.current) {
+        startDrawingSync(roomCodeRef.current);
       }
 
       if (event.type === "DRAW") {
@@ -1144,7 +1187,7 @@ export default function Home() {
           const segments = [...drawingBufferRef.current];
           drawingBufferRef.current = [];
           try {
-            await addDoc(collection(db, "catch_rooms", roomCode, "drawings"), {
+            await addDoc(collection(db, "catch_rooms", roomCodeRef.current, "drawings"), {
               type: "DRAW_BATCH",
               segments: segments,
               timestamp: serverTimestamp()
@@ -1156,7 +1199,7 @@ export default function Home() {
 
         // 제어 명령 등록
         try {
-          await addDoc(collection(db, "catch_rooms", roomCode, "drawings"), {
+          await addDoc(collection(db, "catch_rooms", roomCodeRef.current, "drawings"), {
             type: event.type,
             timestamp: serverTimestamp()
           });
@@ -1236,13 +1279,13 @@ export default function Home() {
                 
                 // 시간에 따른 차등 점수 부여 (60초 기준 남은 시간)
                 let earnedScore = 100;
-                if (timeLeft >= 50) {
+                if (timeLeftRef.current >= 50) {
                   earnedScore = 300; // 10초 이내 맞춤
-                } else if (timeLeft >= 40) {
+                } else if (timeLeftRef.current >= 40) {
                   earnedScore = 250; // 20초 이내 맞춤
-                } else if (timeLeft >= 30) {
+                } else if (timeLeftRef.current >= 30) {
                   earnedScore = 200; // 30초 이내 맞춤
-                } else if (timeLeft >= 20) {
+                } else if (timeLeftRef.current >= 20) {
                   earnedScore = 150; // 40초 이내 맞춤
                 } else {
                   earnedScore = 100; // 40초 초과 후 맞춤
@@ -1252,9 +1295,9 @@ export default function Home() {
                 try {
                   if (chatData.playerId) {
                     const winnerDoc = doc(db, "catch_rooms", roomCodeStr, "players", chatData.playerId);
-                    const prevWinnerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", chatData.playerId)));
-                    if (!prevWinnerSnap.empty) {
-                      await updateDoc(winnerDoc, { score: (prevWinnerSnap.docs[0].data().score || 0) + earnedScore });
+                    const prevWinnerSnap = await getDoc(winnerDoc);
+                    if (prevWinnerSnap.exists()) {
+                      await updateDoc(winnerDoc, { score: (prevWinnerSnap.data().score || 0) + earnedScore });
                     }
                   }
                 } catch (e) {
@@ -1264,9 +1307,9 @@ export default function Home() {
                 try {
                   if (currentRoomStatus.drawerId && currentRoomStatus.drawerId !== "host") {
                     const drawerDoc = doc(db, "catch_rooms", roomCodeStr, "players", currentRoomStatus.drawerId);
-                    const prevDrawerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", currentRoomStatus.drawerId)));
-                    if (!prevDrawerSnap.empty) {
-                      await updateDoc(drawerDoc, { score: (prevDrawerSnap.docs[0].data().score || 0) + 50 });
+                    const prevDrawerSnap = await getDoc(drawerDoc);
+                    if (prevDrawerSnap.exists()) {
+                      await updateDoc(drawerDoc, { score: (prevDrawerSnap.data().score || 0) + 50 });
                     }
                   }
                 } catch (e) {
@@ -1299,7 +1342,7 @@ export default function Home() {
 
                 setTimeout(() => {
                   nextTurn();
-                }, 5000);
+                }, 3000);
 
               } else {
                 // 이미 DRAWING이 아니거나 게임이 끝난 경우 락 해제
@@ -1324,23 +1367,23 @@ export default function Home() {
     const sender = playersStateRef.current.find((p) => p.id === senderId);
     if (!sender) return;
 
-    const isDrawer = senderId === drawerId;
+    const isDrawer = senderId === drawerIdRef.current;
     const cleanGuess = text.trim().replace(/\s+/g, "");
     const cleanAnswer = currentWordRef.current.trim().replace(/\s+/g, "");
 
     // 정답 체크 로직 실행 (출제자가 아니며, 진행 중일 때만 정답 검증)
-    if (!isDrawer && turnStatus === "DRAWING" && cleanGuess === cleanAnswer) {
+    if (!isDrawer && turnStatusRef.current === "DRAWING" && cleanGuess === cleanAnswer) {
       if (isTransitioningRef.current) return;
       isTransitioningRef.current = true;
       // 시간에 따른 차등 점수 부여 (60초 기준 남은 시간)
       let earnedScore = 100;
-      if (timeLeft >= 50) {
+      if (timeLeftRef.current >= 50) {
         earnedScore = 300; // 10초 이내 맞춤
-      } else if (timeLeft >= 40) {
+      } else if (timeLeftRef.current >= 40) {
         earnedScore = 250; // 20초 이내 맞춤
-      } else if (timeLeft >= 30) {
+      } else if (timeLeftRef.current >= 30) {
         earnedScore = 200; // 30초 이내 맞춤
-      } else if (timeLeft >= 20) {
+      } else if (timeLeftRef.current >= 20) {
         earnedScore = 150; // 40초 이내 맞춤
       } else {
         earnedScore = 100; // 40초 초과 후 맞춤
@@ -1351,7 +1394,7 @@ export default function Home() {
         if (p.id === senderId) {
           return { ...p, score: p.score + earnedScore };
         }
-        if (p.id === drawerId) {
+        if (p.id === drawerIdRef.current) {
           return { ...p, score: p.score + 50 };
         }
         return p;
@@ -1383,7 +1426,7 @@ export default function Home() {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       setTimeout(() => {
         nextTurn();
-      }, 5000);
+      }, 3000);
 
     } else {
       // 일반 채팅 브로드캐스트
@@ -1418,7 +1461,7 @@ export default function Home() {
     
     if (USE_FIRESTORE_SYNC) {
       try {
-        const roomRef = doc(db, "catch_rooms", roomCode);
+        const roomRef = doc(db, "catch_rooms", roomCodeRef.current);
         await updateDoc(roomRef, {
           status: "PLAYING",
           currentRound: 1,
@@ -1500,13 +1543,13 @@ export default function Home() {
     if (USE_FIRESTORE_SYNC) {
       try {
         // 1. 이전 그림판 싹 지우기 신호 drawings에 추가
-        await addDoc(collection(db, "catch_rooms", roomCode, "drawings"), {
+        await addDoc(collection(db, "catch_rooms", roomCodeRef.current, "drawings"), {
           type: "CLEAR",
           timestamp: serverTimestamp()
         });
 
         // 2. 방 메인 문서 턴 정보 갱신하여 클라이언트들에 동시성 전파
-        await updateDoc(doc(db, "catch_rooms", roomCode), {
+        await updateDoc(doc(db, "catch_rooms", roomCodeRef.current), {
           drawerId: drawer.id,
           drawerName: drawer.name,
           currentWord: word,
@@ -1531,7 +1574,7 @@ export default function Home() {
       setWordHint(hintText);
       setTimeLeft(roundTimeRef.current);
       
-      if (drawer.id === "host" || isHost) {
+      if (drawer.id === "host" || isHostRef.current) {
         setCurrentWord(word);
       } else {
         setCurrentWord("");
@@ -1547,7 +1590,7 @@ export default function Home() {
             wordLength: word.length,
             hint: hintText,
             timeLeft: roundTimeRef.current,
-            round: currentRound,
+            round: currentRoundRef.current,
             turn: turnIndexRef.current + 1,
             word: studentId === drawer.id ? word : "" // 출제자 학생에게만 단어 제공
           });
@@ -1604,7 +1647,7 @@ export default function Home() {
     if (USE_FIRESTORE_SYNC) {
       try {
         // 1. 시간초과 시스템 안내 추가
-        await addDoc(collection(db, "catch_rooms", roomCode, "chats"), {
+        await addDoc(collection(db, "catch_rooms", roomCodeRef.current, "chats"), {
           sender: "SYSTEM",
           text: `⏰ 시간 초과! 정답은 [${currentWordRef.current}]였습니다.`,
           type: "system",
@@ -1616,7 +1659,7 @@ export default function Home() {
 
       try {
         // 2. 방 상태를 TRANSITION으로 전환
-        await updateDoc(doc(db, "catch_rooms", roomCode), {
+        await updateDoc(doc(db, "catch_rooms", roomCodeRef.current), {
           turnStatus: "TRANSITION",
           transitionMsg: `⏰ 시간 초과! 정답은 [${currentWordRef.current}]였습니다.`
         });
@@ -1624,10 +1667,10 @@ export default function Home() {
         console.error("타임아웃 방 상태 업데이트 실패:", e);
       }
 
-      // 타이머 정지 후 5초 후 다음 턴 전환
+      // 타이머 정지 후 3초 후 다음 턴 전환
       setTimeout(() => {
         nextTurn();
-      }, 5000);
+      }, 3000);
 
     } else {
       setTurnStatus("TRANSITION");
@@ -1639,10 +1682,10 @@ export default function Home() {
         word: currentWordRef.current
       });
 
-      // 5초 대기 후 다음 턴으로
+      // 3초 대기 후 다음 턴으로
       setTimeout(() => {
         nextTurn();
-      }, 5000);
+      }, 3000);
     }
   };
 
@@ -1658,14 +1701,14 @@ export default function Home() {
     if (activeDrawerIndexRef.current >= studentCandidates.length) {
       activeDrawerIndexRef.current = 0;
       
-      const nextRound = currentRound + 1;
+      const nextRound = currentRoundRef.current + 1;
       if (nextRound > totalRoundsRef.current) {
         handleGameOver();
         return;
       }
       setCurrentRound(nextRound);
       if (USE_FIRESTORE_SYNC) {
-        updateDoc(doc(db, "catch_rooms", roomCode), { currentRound: nextRound }).catch(console.error);
+        updateDoc(doc(db, "catch_rooms", roomCodeRef.current), { currentRound: nextRound }).catch(console.error);
       }
     }
 
@@ -1680,7 +1723,7 @@ export default function Home() {
         return addDoc(scoresCol, {
           nickname: player.name,
           score: player.score,
-          roomCode: roomCode,
+          roomCode: roomCodeRef.current,
           timestamp: serverTimestamp()
         });
       });
@@ -1699,7 +1742,7 @@ export default function Home() {
     if (USE_FIRESTORE_SYNC) {
       try {
         // 1. 방 상태 OVER로 업데이트
-        await updateDoc(doc(db, "catch_rooms", roomCode), {
+        await updateDoc(doc(db, "catch_rooms", roomCodeRef.current), {
           status: "OVER"
         });
 
@@ -1790,7 +1833,7 @@ export default function Home() {
 
     if (USE_FIRESTORE_SYNC) {
       try {
-        const chatsCol = collection(db, "catch_rooms", roomCode, "chats");
+        const chatsCol = collection(db, "catch_rooms", roomCodeRef.current, "chats");
         await addDoc(chatsCol, {
           sender: isHost ? "선생님" : nickname.trim(),
           playerId: playerIdRef.current,
