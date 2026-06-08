@@ -101,6 +101,15 @@ export default function Home() {
   // 채팅 상태
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
+  const [localWordInput, setLocalWordInput] = useState("");
+
+  // 실시간 커스텀 제시어 상태
+  const [customWords, setCustomWordsState] = useState([]);
+  const customWordsRef = useRef([]);
+  const setCustomWords = (val) => {
+    setCustomWordsState(val);
+    customWordsRef.current = val;
+  };
 
   // Refs for WebRTC & Game Loop
   const peerRef = useRef(null);
@@ -270,6 +279,7 @@ export default function Home() {
       }
       
       const newCategories = {
+        custom_submit: { name: "✍️ 실시간 커스텀 제시어 (참가자 직접 입력)", words: [] },
         deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
         class2: { name: "✏️ 2반 스페셜 & 덕소중 상식", words: [] },
         class7: { name: "✏️ 7반 스페셜 & 우리나라 상식", words: [] },
@@ -396,6 +406,13 @@ export default function Home() {
       setWordHint(data.wordHint);
       setTurnStatus(data.turnStatus);
       setTransitionMsg(data.transitionMsg);
+
+      // customWords 동기화
+      if (data.customWords) {
+        setCustomWords(data.customWords);
+      } else {
+        setCustomWords([]);
+      }
 
       // 턴 시작 및 상태 변화에 따라 로컬 클라이언트 타이머 동기화
       setTimeLeft(data.timeLeft);
@@ -918,6 +935,7 @@ export default function Home() {
     updateIsHost(false);
     setPlayers([]);
     setChatMessages([]);
+    setCustomWords([]);
     setCurrentRound(1);
     setCurrentTurn(0);
     setDrawerId("");
@@ -1485,6 +1503,79 @@ export default function Home() {
     }
   };
 
+  // 참가자의 제시어 개별 제출 핸들러
+  const handleWordSubmit = async (word) => {
+    const trimmed = word?.trim().replace(/\s+/g, ""); // 공백 제거
+    if (!trimmed) {
+      alert("제시어 단어를 입력해 주세요.");
+      return;
+    }
+    if (trimmed.length > 12) {
+      alert("제시어는 최대 12자까지 가능합니다.");
+      return;
+    }
+
+    try {
+      const myPlayerId = isHost ? "host" : playerIdRef.current;
+      const playerDocRef = doc(db, "catch_rooms", roomCodeRef.current, "players", myPlayerId);
+      await updateDoc(playerDocRef, {
+        submittedWord: trimmed
+      });
+      setLocalWordInput("");
+      console.log("제시어 제출 완료:", trimmed);
+    } catch (e) {
+      console.error("제시어 제출 실패:", e);
+      alert("제시어 제출에 실패했습니다. 다시 시도해 주세요.");
+    }
+  };
+
+  // 교사의 수집 완료 및 게임 개시 핸들러
+  const handleFinishSubmissionAndStart = async () => {
+    // 1. 모든 참가자(players) 중 submittedWord가 있는 단어 수집
+    const submittedWords = players
+      .map((p) => p.submittedWord?.trim())
+      .filter((w) => typeof w === "string" && w.length > 0);
+
+    if (submittedWords.length === 0) {
+      alert("제출된 제시어가 없습니다. 최소 한 명 이상 단어를 제출해야 시작할 수 있습니다.");
+      return;
+    }
+
+    // 2. 라운드 수 자동 조정
+    const studentCount = players.filter((p) => p.id !== "host").length;
+    const calculatedRounds = studentCount > 0 ? Math.ceil(submittedWords.length / studentCount) : 1;
+    
+    setCustomWords(submittedWords);
+    totalRoundsRef.current = calculatedRounds;
+    setTotalRounds(calculatedRounds);
+
+    try {
+      const roomRef = doc(db, "catch_rooms", roomCodeRef.current);
+      await updateDoc(roomRef, {
+        customWords: submittedWords,
+        totalRounds: calculatedRounds,
+        status: "PLAYING",
+        currentRound: 1,
+        turnIndex: 0,
+        turnStatus: "DRAWING"
+      });
+
+      playSound("start");
+      setCurrentRound(1);
+      turnIndexRef.current = 0;
+      activeDrawerIndexRef.current = 0;
+      usedWordsRef.current.clear();
+
+      setTimeout(() => {
+        startNewTurn();
+      }, 1000);
+
+    } catch (e) {
+      console.error("제시어 입력 마감 및 시작 실패:", e);
+      alert("게임 시작 도중 오류가 발생했습니다.");
+    }
+  };
+
   // 교사용 게임 시작 실행
   const handleStartGame = async () => {
     const students = players.filter((p) => p.id !== "host");
@@ -1500,22 +1591,44 @@ export default function Home() {
     if (USE_FIRESTORE_SYNC) {
       try {
         const roomRef = doc(db, "catch_rooms", roomCodeRef.current);
-        await updateDoc(roomRef, {
-          status: "PLAYING",
-          currentRound: 1,
-          turnIndex: 0,
-          turnStatus: "DRAWING"
-        });
+        
+        if (wordCategory === "custom_submit") {
+          // 실시간 커스텀 제시어 방식인 경우: SUBMIT_WORDS 단계로 진입
+          // 먼저 모든 플레이어의 submittedWord 필드 초기화
+          const batch = writeBatch(db);
+          players.forEach((p) => {
+            const pRef = doc(db, "catch_rooms", roomCodeRef.current, "players", p.id);
+            batch.update(pRef, { submittedWord: "" });
+          });
+          
+          batch.update(roomRef, {
+            status: "SUBMIT_WORDS",
+            customWords: [],
+            currentRound: 1,
+            turnIndex: 0
+          });
+          
+          await batch.commit();
+          playSound("start");
+        } else {
+          // 기존 일반 방식인 경우 바로 PLAYING
+          await updateDoc(roomRef, {
+            status: "PLAYING",
+            currentRound: 1,
+            turnIndex: 0,
+            turnStatus: "DRAWING"
+          });
 
-        playSound("start");
-        setCurrentRound(1);
-        turnIndexRef.current = 0;
-        activeDrawerIndexRef.current = 0;
-        usedWordsRef.current.clear();
+          playSound("start");
+          setCurrentRound(1);
+          turnIndexRef.current = 0;
+          activeDrawerIndexRef.current = 0;
+          usedWordsRef.current.clear();
 
-        setTimeout(() => {
-          startNewTurn();
-        }, 1000);
+          setTimeout(() => {
+            startNewTurn();
+          }, 1000);
+        }
 
       } catch (e) {
         console.error(e);
@@ -1546,6 +1659,21 @@ export default function Home() {
 
   // 로컬 무작위 제시어 선출
   const getLocalRandomWord = (categoryKey) => {
+    if (categoryKey === "custom_submit") {
+      const words = customWordsRef.current || [];
+      // 아직 사용하지 않은 커스텀 단어들을 먼저 필터링
+      const unusedWords = words.filter(w => !usedWordsRef.current.has(w));
+      if (unusedWords.length > 0) {
+        const randomIndex = Math.floor(Math.random() * unusedWords.length);
+        return unusedWords[randomIndex];
+      }
+      // 사용하지 않은 단어가 없다면, 전체 커스텀 단어 중 하나 반환
+      if (words.length > 0) {
+        const randomIndex = Math.floor(Math.random() * words.length);
+        return words[randomIndex];
+      }
+      return "덕소중학교"; // 완전 비어있을 때 대비 기본 단어
+    }
     const category = gameWordsRef.current[categoryKey] || gameWordsRef.current.deokso;
     const words = category.words;
     if (!words || words.length === 0) return "덕소중학교";
@@ -2045,6 +2173,118 @@ export default function Home() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", marginTop: "2rem" }}>
                 <div className="status-badge connected">선생님의 게임 시작을 대기하고 있습니다...</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =======================================================
+            [SUBMIT_WORDS] 제시어 입력 및 수집 화면
+            ======================================================= */}
+        {gameStage === "SUBMIT_WORDS" && (
+          <div className="waiting-container submit-words-container">
+            <h2 style={{ fontSize: "1.8rem", marginBottom: "0.5rem" }}>✍️ 실시간 커스텀 제시어 입력</h2>
+            <p style={{ color: "var(--text-secondary)" }}>
+              이번 게임에서 사용할 단어를 각자 하나씩 입력해 주세요!
+            </p>
+
+            {/* 입력 영역 */}
+            <div className="submit-section" style={{ maxWidth: "500px", margin: "2rem auto", padding: "2rem", background: "rgba(255,255,255,0.03)", borderRadius: "var(--radius-lg)", border: "1px solid rgba(255,255,255,0.05)" }}>
+              {(() => {
+                const myInfo = players.find(p => p.id === (isHost ? "host" : playerIdRef.current));
+                const submitted = !!(myInfo && myInfo.submittedWord);
+                return submitted ? (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>✅</div>
+                    <h3 style={{ fontSize: "1.2rem", fontWeight: "600", color: "#10b981", marginBottom: "0.5rem" }}>제출 완료!</h3>
+                    <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem" }}>다른 참가자들의 단어 입력을 기다리고 있습니다.</p>
+                    <div style={{ marginTop: "1.5rem", padding: "0.75rem", background: "rgba(16, 185, 129, 0.1)", border: "1px dashed rgba(16, 185, 129, 0.3)", borderRadius: "var(--radius-sm)", display: "inline-block" }}>
+                      내가 제출한 단어: <strong style={{ color: "#10b981" }}>{myInfo.submittedWord}</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 style={{ fontSize: "1.1rem", fontWeight: "600", marginBottom: "1rem" }}>내가 만들 제시어</h3>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <input
+                        type="text"
+                        placeholder="예: 떡볶이먹는종현쌤"
+                        maxLength={12}
+                        className="form-input"
+                        style={{ flex: 1 }}
+                        value={localWordInput}
+                        onChange={(e) => setLocalWordInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleWordSubmit(localWordInput);
+                          }
+                        }}
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => handleWordSubmit(localWordInput)}
+                      >
+                        제출하기
+                      </button>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.5rem" }}>
+                      * 공백 없이 최대 12글자까지 입력이 가능합니다.
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 실시간 현황 판 */}
+            <div className="students-section" style={{ marginTop: "2rem" }}>
+              <div className="section-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>실시간 제출 현황</span>
+                <span className="student-count-badge">
+                  {players.filter(p => p.submittedWord).length} / {players.length}명 제출 완료
+                </span>
+              </div>
+              
+              <div className="students-grid" style={{ marginTop: "1rem" }}>
+                {players.map((p) => {
+                  const hasSub = !!p.submittedWord;
+                  return (
+                    <div key={p.id} className={`student-card ${hasSub ? "submitted" : "waiting"}`} style={{ position: "relative", border: hasSub ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(255,255,255,0.05)", background: hasSub ? "rgba(16, 185, 129, 0.05)" : "rgba(255,255,255,0.02)" }}>
+                      <div className="student-avatar">{p.avatar}</div>
+                      <span className="student-name">{p.name}</span>
+                      <span style={{
+                        position: "absolute",
+                        top: "-8px",
+                        right: "-8px",
+                        fontSize: "0.75rem",
+                        padding: "2px 6px",
+                        borderRadius: "10px",
+                        background: hasSub ? "#10b981" : "#eab308",
+                        color: "#000",
+                        fontWeight: "bold"
+                      }}>
+                        {hasSub ? "완료" : "입력중"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {isHost && (
+              <div style={{ marginTop: "3rem", display: "flex", gap: "1rem", justifyContent: "center" }}>
+                <button 
+                  className="btn btn-outline" 
+                  onClick={resetGameState}
+                >
+                  방 폭파하기
+                </button>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={handleFinishSubmissionAndStart}
+                  style={{ paddingLeft: "2rem", paddingRight: "2rem", background: "linear-gradient(135deg, #059669 0%, #10b981 100%)", boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)" }}
+                >
+                  🏁 입력 마감 및 즉시 시작
+                </button>
               </div>
             )}
           </div>

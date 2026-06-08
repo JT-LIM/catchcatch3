@@ -1,5 +1,9 @@
 // 덕소중학교 캐치마인드 제시어 목록 데이터베이스
 export const WORD_CATEGORIES = {
+  custom_submit: {
+    name: "✍️ 실시간 커스텀 제시어 (참가자 직접 입력)",
+    words: []
+  },
   deokso: {
     name: "🏫 덕소중학교 스페셜",
     words: [

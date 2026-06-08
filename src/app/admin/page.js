@@ -19,6 +19,7 @@ const BUILD_VERSION = "v1.2.0";
 const BUILD_TIME = "2026-06-05 16:35";
 
 const DEFAULT_CATEGORIES = {
+  custom_submit: "✍️ 실시간 커스텀 제시어 (참가자 직접 입력)",
   deokso: "🏫 덕소중학교 스페셜",
   class2: "✏️ 2반 스페셜 & 덕소중 상식",
   class7: "✏️ 7반 스페셜 & 우리나라 상식",
