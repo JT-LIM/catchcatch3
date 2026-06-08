@@ -700,13 +700,15 @@ export default function Home() {
           joinedAt: serverTimestamp()
         });
 
-        // 3. 학생 입장 시스템 메시지 추가
+        // 3. 학생 입장 시스템 메시지 추가 (비활성화 처리)
+        /*
         await addDoc(collection(db, "catch_rooms", cleanRoomCode, "chats"), {
           sender: "SYSTEM",
           text: `🎉 ${cleanNickname}님이 입장하셨습니다!`,
           type: "system",
           timestamp: serverTimestamp()
         });
+        */
 
         // 4. 실시간 리스너 작동 및 게임 대기실 진입
         updateIsHost(false);
@@ -955,12 +957,15 @@ export default function Home() {
           players: updatedPlayers
         });
 
+        // 학생 입장 알림 채팅 비활성화
+        /*
         const systemMsg = `🎉 ${data.nickname}님이 입장하셨습니다!`;
         addSystemChatMessage(systemMsg);
         broadcastToAll({
           type: "SYSTEM_MSG",
           text: systemMsg
         });
+        */
 
         if (gameStage === "PLAYING") {
           conn.send({
@@ -2032,7 +2037,7 @@ export default function Home() {
             </div>
 
             {/* 중앙 화이트보드 캔버스 영역 */}
-            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0 }}>
               
               {/* 제시어 및 타이머 바 */}
               <div className="game-info-bar">
