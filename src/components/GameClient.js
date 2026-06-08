@@ -2378,46 +2378,25 @@ export default function Home() {
                       <span className="word-value">{currentWord}</span>
                     ) : (
                       timeLeft > 57 || tempShowWord ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          <span className="word-value" style={{ color: "var(--success-color)" }}>{currentWord}</span>
-                          <button 
-                            style={{
-                              background: "rgba(255, 255, 255, 0.1)",
-                              border: "1px solid rgba(255, 255, 255, 0.2)",
-                              color: "#94a3b8",
-                              padding: "0.15rem 0.5rem",
-                              borderRadius: "4px",
-                              fontSize: "0.75rem",
-                              fontWeight: "600",
-                              cursor: "pointer"
-                            }}
-                            onClick={() => setTempShowWord(false)}
-                          >
-                            숨기기
-                          </button>
-                        </div>
+                        <span className="word-value" style={{ color: "var(--success-color)" }}>{currentWord}</span>
                       ) : (
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          <span className="word-value" style={{ fontSize: "0.9rem", color: "var(--text-muted)", border: "1px dashed rgba(255,255,255,0.1)", padding: "0.15rem 0.5rem", borderRadius: "4px" }}>
-                            🔒 제시어 가려짐
-                          </span>
-                          <button 
-                            style={{
-                              background: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)",
-                              border: "none",
-                              color: "white",
-                              padding: "0.2rem 0.6rem",
-                              borderRadius: "4px",
-                              fontSize: "0.75rem",
-                              fontWeight: "600",
-                              cursor: "pointer",
-                              boxShadow: "0 2px 6px rgba(6, 182, 212, 0.2)"
-                            }}
-                            onClick={() => setTempShowWord(true)}
-                          >
-                            보기
-                          </button>
-                        </div>
+                        <span 
+                          className="word-value" 
+                          style={{ 
+                            fontSize: "0.95rem", 
+                            color: "var(--text-muted)", 
+                            cursor: "pointer", 
+                            border: "1px dashed rgba(255,255,255,0.2)",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: "4px"
+                          }}
+                          onMouseEnter={() => setTempShowWord(true)}
+                          onMouseLeave={() => setTempShowWord(false)}
+                          onTouchStart={() => setTempShowWord(true)}
+                          onTouchEnd={() => setTempShowWord(false)}
+                        >
+                          👁️ 마우스 오버/터치 시 보기
+                        </span>
                       )
                     )
                   ) : (
