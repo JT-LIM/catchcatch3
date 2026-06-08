@@ -748,6 +748,7 @@ body {
   font-family: monospace;
   color: var(--accent-color);
   text-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+  white-space: pre-wrap;
 }
 
 .info-timer {

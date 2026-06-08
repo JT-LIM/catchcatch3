@@ -432,8 +432,9 @@ export default function Home() {
     setPeerError("");
 
     const cat = settings.category || wordCategory;
-    const time = settings.time || roundTime;
+    const time = 60; // 제한시간 60초로 고정
     const rounds = settings.rounds || totalRounds;
+    roundTimeRef.current = 60;
 
     if (USE_FIRESTORE_SYNC) {
       // ==========================================
@@ -1212,67 +1213,101 @@ export default function Home() {
           const cleanGuess = (chatData.text || "").trim().replace(/\s+/g, "");
           const cleanAnswer = currentWordRef.current.trim().replace(/\s+/g, "");
 
-          // 현재 상태가 DRAWING 이고 단어가 일치한다면 정답 처리!
-          const roomRef = doc(db, "catch_rooms", roomCodeStr);
-          const roomSnap = await getDocs(query(collection(db, "catch_rooms"), where("__name__", "==", roomCodeStr)));
-          if (roomSnap.empty) continue;
-          
-          const currentRoomStatus = roomSnap.docs[0].data();
-
-          if (currentRoomStatus.turnStatus === "DRAWING" && currentRoomStatus.status === "PLAYING" && cleanGuess === cleanAnswer) {
+          // 1. 단어가 일치하는지 먼저 검사하여 불필요한 DB 조회를 줄이고 레이스 컨디션을 방지
+          if (cleanGuess === cleanAnswer) {
+            // 2. 비동기 락 획득 (동일한 정답에 대해 단 한 번만 실행되도록 보장)
             if (isTransitioningRef.current) continue;
             isTransitioningRef.current = true;
-            console.log(`[정답 판독 성공] 맞춘 사람: ${chatData.sender}, 단어: ${currentWordRef.current}`);
-            
-            // 점수 계산 (방장 로컬에 남은 시간 기준 가산)
-            const basePoints = 100;
-            const speedBonus = Math.floor(timeLeft * 1.5);
-            const earnedScore = basePoints + speedBonus;
+            console.log(`[정답 감지] 맞춤 시도: ${chatData.sender}, 제시어: ${currentWordRef.current}`);
 
-            // 정답을 맞춘 학생 및 출제자에게 Firestore 점수 가산
             try {
-              // 1. 맞춘 사람 점수 증가
-              if (chatData.playerId) {
-                const winnerDoc = doc(db, "catch_rooms", roomCodeStr, "players", chatData.playerId);
-                const prevWinnerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", chatData.playerId)));
-                if (!prevWinnerSnap.empty) {
-                  await updateDoc(winnerDoc, { score: (prevWinnerSnap.docs[0].data().score || 0) + earnedScore });
-                }
+              const roomRef = doc(db, "catch_rooms", roomCodeStr);
+              const roomSnap = await getDocs(query(collection(db, "catch_rooms"), where("__name__", "==", roomCodeStr)));
+              
+              if (roomSnap.empty) {
+                isTransitioningRef.current = false;
+                continue;
               }
+              
+              const currentRoomStatus = roomSnap.docs[0].data();
 
-              // 2. 출제자 점수 증가 (+50점)
-              if (currentRoomStatus.drawerId && currentRoomStatus.drawerId !== "host") {
-                const drawerDoc = doc(db, "catch_rooms", roomCodeStr, "players", currentRoomStatus.drawerId);
-                const prevDrawerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", currentRoomStatus.drawerId)));
-                if (!prevDrawerSnap.empty) {
-                  await updateDoc(drawerDoc, { score: (prevDrawerSnap.docs[0].data().score || 0) + 50 });
+              if (currentRoomStatus.turnStatus === "DRAWING" && currentRoomStatus.status === "PLAYING") {
+                console.log(`[정답 판독 성공] 맞춘 사람: ${chatData.sender}, 단어: ${currentWordRef.current}`);
+                
+                // 시간에 따른 차등 점수 부여 (60초 기준 남은 시간)
+                let earnedScore = 100;
+                if (timeLeft >= 50) {
+                  earnedScore = 300; // 10초 이내 맞춤
+                } else if (timeLeft >= 40) {
+                  earnedScore = 250; // 20초 이내 맞춤
+                } else if (timeLeft >= 30) {
+                  earnedScore = 200; // 30초 이내 맞춤
+                } else if (timeLeft >= 20) {
+                  earnedScore = 150; // 40초 이내 맞춤
+                } else {
+                  earnedScore = 100; // 40초 초과 후 맞춤
                 }
+
+                // 점수 및 알림 등록 (실패해도 다음 턴 전환이 막히지 않도록 각자 try-catch 처리)
+                try {
+                  if (chatData.playerId) {
+                    const winnerDoc = doc(db, "catch_rooms", roomCodeStr, "players", chatData.playerId);
+                    const prevWinnerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", chatData.playerId)));
+                    if (!prevWinnerSnap.empty) {
+                      await updateDoc(winnerDoc, { score: (prevWinnerSnap.docs[0].data().score || 0) + earnedScore });
+                    }
+                  }
+                } catch (e) {
+                  console.error("정답자 점수 가산 실패:", e);
+                }
+
+                try {
+                  if (currentRoomStatus.drawerId && currentRoomStatus.drawerId !== "host") {
+                    const drawerDoc = doc(db, "catch_rooms", roomCodeStr, "players", currentRoomStatus.drawerId);
+                    const prevDrawerSnap = await getDocs(query(collection(db, "catch_rooms", roomCodeStr, "players"), where("__name__", "==", currentRoomStatus.drawerId)));
+                    if (!prevDrawerSnap.empty) {
+                      await updateDoc(drawerDoc, { score: (prevDrawerSnap.docs[0].data().score || 0) + 50 });
+                    }
+                  }
+                } catch (e) {
+                  console.error("출제자 점수 가산 실패:", e);
+                }
+
+                try {
+                  await addDoc(collection(db, "catch_rooms", roomCodeStr, "chats"), {
+                    sender: "SYSTEM",
+                    text: `🎉 ${chatData.sender}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`,
+                    type: "system",
+                    timestamp: serverTimestamp()
+                  });
+                } catch (e) {
+                  console.error("시스템 채팅 등록 실패:", e);
+                }
+
+                try {
+                  await updateDoc(roomRef, {
+                    turnStatus: "TRANSITION",
+                    transitionMsg: `🎉 ${chatData.sender}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`
+                  });
+                } catch (e) {
+                  console.error("방 상태 TRANSITION 업데이트 실패:", e);
+                }
+
+                // 타이머 정지 후 5초 후 다음 턴 전환
+                if (localTimerRef.current) clearInterval(localTimerRef.current);
+                if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+
+                setTimeout(() => {
+                  nextTurn();
+                }, 5000);
+
+              } else {
+                // 이미 DRAWING이 아니거나 게임이 끝난 경우 락 해제
+                isTransitioningRef.current = false;
               }
-
-              // 3. 시스템 정답 알림 채팅 등록
-              await addDoc(collection(db, "catch_rooms", roomCodeStr, "chats"), {
-                sender: "SYSTEM",
-                text: `🎉 ${chatData.sender}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`,
-                type: "system",
-                timestamp: serverTimestamp()
-              });
-
-              // 4. 방 상태를 정답 결과 노출 단계(TRANSITION)로 업데이트
-              await updateDoc(roomRef, {
-                turnStatus: "TRANSITION",
-                transitionMsg: `🎉 ${chatData.sender}님이 정답 [${currentWordRef.current}]을 맞췄습니다! (+${earnedScore}점)`
-              });
-
-              // 타이머 정지 후 5초 후 다음 턴 전환
-              if (localTimerRef.current) clearInterval(localTimerRef.current);
-              if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-
-              setTimeout(() => {
-                nextTurn();
-              }, 5000);
-
             } catch (err) {
-              console.error("정답 처리 가산 중 데이터베이스 에러:", err);
+              console.error("정답 판독 로직 에러:", err);
+              isTransitioningRef.current = false;
             }
           }
         }
@@ -1297,9 +1332,19 @@ export default function Home() {
     if (!isDrawer && turnStatus === "DRAWING" && cleanGuess === cleanAnswer) {
       if (isTransitioningRef.current) return;
       isTransitioningRef.current = true;
-      const basePoints = 100;
-      const speedBonus = Math.floor(timeLeft * 1.5);
-      const earnedScore = basePoints + speedBonus;
+      // 시간에 따른 차등 점수 부여 (60초 기준 남은 시간)
+      let earnedScore = 100;
+      if (timeLeft >= 50) {
+        earnedScore = 300; // 10초 이내 맞춤
+      } else if (timeLeft >= 40) {
+        earnedScore = 250; // 20초 이내 맞춤
+      } else if (timeLeft >= 30) {
+        earnedScore = 200; // 30초 이내 맞춤
+      } else if (timeLeft >= 20) {
+        earnedScore = 150; // 40초 이내 맞춤
+      } else {
+        earnedScore = 100; // 40초 초과 후 맞춤
+      }
 
       // 점수 가산
       const updated = playersStateRef.current.map((p) => {
@@ -1367,7 +1412,7 @@ export default function Home() {
       return;
     }
 
-    roundTimeRef.current = roundTime;
+    roundTimeRef.current = 60; // 60초 고정
     totalRoundsRef.current = totalRounds;
     categoryRef.current = wordCategory;
     
@@ -1450,7 +1495,7 @@ export default function Home() {
     usedWordsRef.current.add(word);
     currentWordRef.current = word;
 
-    const hintText = Array(word.length).fill("_").join(" ");
+    const hintText = Array.from(word).map(char => char === " " ? " " : "_").join(" ");
 
     if (USE_FIRESTORE_SYNC) {
       try {
@@ -1555,6 +1600,7 @@ export default function Home() {
   const handleTimeOut = async () => {
     if (isTransitioningRef.current) return;
     isTransitioningRef.current = true;
+
     if (USE_FIRESTORE_SYNC) {
       try {
         // 1. 시간초과 시스템 안내 추가
@@ -1564,19 +1610,25 @@ export default function Home() {
           type: "system",
           timestamp: serverTimestamp()
         });
+      } catch (e) {
+        console.error("타임아웃 채팅 등록 실패:", e);
+      }
 
+      try {
         // 2. 방 상태를 TRANSITION으로 전환
         await updateDoc(doc(db, "catch_rooms", roomCode), {
           turnStatus: "TRANSITION",
           transitionMsg: `⏰ 시간 초과! 정답은 [${currentWordRef.current}]였습니다.`
         });
-
-        setTimeout(() => {
-          nextTurn();
-        }, 5000);
       } catch (e) {
-        console.error("타임아웃 동기화 실패:", e);
+        console.error("타임아웃 방 상태 업데이트 실패:", e);
       }
+
+      // 타이머 정지 후 5초 후 다음 턴 전환
+      setTimeout(() => {
+        nextTurn();
+      }, 5000);
+
     } else {
       setTurnStatus("TRANSITION");
       setTransitionMsg(`⏰ 시간 초과! 정답은 [${currentWordRef.current}]였습니다.`);
@@ -1956,7 +2008,9 @@ export default function Home() {
                   {checkIsDrawer() || isHost ? (
                     <span className="word-value">{currentWord}</span>
                   ) : (
-                    <span className="word-value is-hint">{wordHint}</span>
+                    <span className="word-value is-hint" style={{ fontSize: timeLeft > 40 ? "1.2rem" : "1.8rem" }}>
+                      {timeLeft > 40 ? "🔒 20초 후 글자 수 공개" : wordHint}
+                    </span>
                   )}
                 </div>
 
