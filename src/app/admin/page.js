@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/utils/firebase";
+import { WORD_CATEGORIES } from "@/utils/WordList";
 import { 
   collection, 
   getDocs, 
@@ -77,10 +78,40 @@ export default function AdminPage() {
       // 1. 단어 목록 로드
       const wordsCol = collection(db, "catch_words");
       const wordsSnapshot = await getDocs(wordsCol);
-      const loadedWords = [];
+      let loadedWords = [];
       wordsSnapshot.forEach((doc) => {
         loadedWords.push({ id: doc.id, ...doc.data() });
       });
+
+      // 스마트 동기화: 로컬 WORD_CATEGORIES 중 DB에 없는 단어를 추가로 업로드
+      const dbWordSet = new Set(loadedWords.map(w => `${w.category}:${w.word}`));
+      const missingWords = [];
+      for (const [catKey, catVal] of Object.entries(WORD_CATEGORIES)) {
+        for (const wordText of catVal.words) {
+          if (!dbWordSet.has(`${catKey}:${wordText}`)) {
+            missingWords.push({ category: catKey, word: wordText });
+          }
+        }
+      }
+
+      if (missingWords.length > 0) {
+        console.log(`[Admin] Syncing local words to Firestore... Adding ${missingWords.length} new words.`);
+        const promises = missingWords.map(item => {
+          return addDoc(wordsCol, {
+            word: item.word,
+            category: item.category,
+            createdAt: serverTimestamp()
+          });
+        });
+        await Promise.all(promises);
+        
+        // 새로 추가된 단어가 있으므로 리로드
+        const reSnapshot = await getDocs(wordsCol);
+        loadedWords = [];
+        reSnapshot.forEach((doc) => {
+          loadedWords.push({ id: doc.id, ...doc.data() });
+        });
+      }
       setWords(loadedWords);
 
       // 2. 학생 점수 목록 로드
