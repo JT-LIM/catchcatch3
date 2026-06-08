@@ -84,29 +84,61 @@ export default function AdminPage() {
         loadedWords.push({ id: doc.id, ...doc.data() });
       });
 
-      // 스마트 동기화: 로컬 WORD_CATEGORIES 중 DB에 없는 단어를 추가로 업로드
-      const dbWordSet = new Set(loadedWords.map(w => `${w.category}:${w.word}`));
+      // 스마트 양방향 동기화: 로컬 기본 카테고리와 DB 일치화 (누락 단어 추가, 안 쓰는 기본 단어 삭제)
+      const defaultCatKeys = new Set(Object.keys(WORD_CATEGORIES));
+      const localWordSet = new Set();
+      for (const [catKey, catVal] of Object.entries(WORD_CATEGORIES)) {
+        for (const wordText of catVal.words) {
+          localWordSet.add(`${catKey}:${wordText}`);
+        }
+      }
+
       const missingWords = [];
       for (const [catKey, catVal] of Object.entries(WORD_CATEGORIES)) {
         for (const wordText of catVal.words) {
-          if (!dbWordSet.has(`${catKey}:${wordText}`)) {
+          const exists = loadedWords.some(w => w.category === catKey && w.word === wordText);
+          if (!exists) {
             missingWords.push({ category: catKey, word: wordText });
           }
         }
       }
 
+      const redundantWordDocs = [];
+      loadedWords.forEach(w => {
+        if (defaultCatKeys.has(w.category)) {
+          if (!localWordSet.has(`${w.category}:${w.word}`)) {
+            redundantWordDocs.push(w);
+          }
+        }
+      });
+
+      let needReload = false;
+      if (redundantWordDocs.length > 0) {
+        console.log(`[Admin Sync] Deleting ${redundantWordDocs.length} outdated default words from Firestore...`);
+        const delPromises = redundantWordDocs.map(docData => {
+          if (docData.id) {
+            return deleteDoc(doc(db, "catch_words", docData.id));
+          }
+          return Promise.resolve();
+        });
+        await Promise.all(delPromises);
+        needReload = true;
+      }
+
       if (missingWords.length > 0) {
-        console.log(`[Admin] Syncing local words to Firestore... Adding ${missingWords.length} new words.`);
-        const promises = missingWords.map(item => {
+        console.log(`[Admin Sync] Adding ${missingWords.length} new local words to Firestore...`);
+        const addPromises = missingWords.map(item => {
           return addDoc(wordsCol, {
             word: item.word,
             category: item.category,
             createdAt: serverTimestamp()
           });
         });
-        await Promise.all(promises);
-        
-        // 새로 추가된 단어가 있으므로 리로드
+        await Promise.all(addPromises);
+        needReload = true;
+      }
+
+      if (needReload) {
         const reSnapshot = await getDocs(wordsCol);
         loadedWords = [];
         reSnapshot.forEach((doc) => {
