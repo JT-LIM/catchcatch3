@@ -286,7 +286,8 @@ export default function Home() {
       }
       
       const newCategories = {
-        custom_submit: { name: "✍️ 실시간 커스텀 제시어 (참가자 직접 입력)", words: [] },
+        custom_submit_others: { name: "✍️ 실시간 커스텀 (남이 쓴 단어 그리기)", words: [] },
+        custom_submit_self: { name: "✍️ 실시간 커스텀 (내가 쓴 단어 그리기)", words: [] },
         deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
         class2_1: { name: "✏️ 2학년 1반 제시어 (학생 & IT)", words: [] },
         class2_2: { name: "✏️ 2학년 2반 제시어 (학생 & IT)", words: [] },
@@ -1662,7 +1663,7 @@ export default function Home() {
       try {
         const roomRef = doc(db, "catch_rooms", roomCodeRef.current);
         
-        if (wordCategory === "custom_submit") {
+        if (wordCategory === "custom_submit_others" || wordCategory === "custom_submit_self") {
           // 실시간 커스텀 제시어 방식인 경우: SUBMIT_WORDS 단계로 진입
           // 먼저 모든 플레이어의 submittedWord 필드 초기화
           const batch = writeBatch(db);
@@ -1729,7 +1730,7 @@ export default function Home() {
 
   // 로컬 무작위 제시어 선출
   const getLocalRandomWord = (categoryKey) => {
-    if (categoryKey === "custom_submit") {
+    if (categoryKey === "custom_submit_others" || categoryKey === "custom_submit_self") {
       const words = customWordsRef.current || [];
       // 아직 사용하지 않은 커스텀 단어들을 먼저 필터링
       const unusedWords = words.filter(w => !usedWordsRef.current.has(w));
@@ -1768,13 +1769,20 @@ export default function Home() {
     activeDrawerIndexRef.current = drawerIdx;
     const drawer = candidates[drawerIdx];
     
-    // 제시어 선출 (커스텀 모드인 경우 출제자가 직접 제출한 단어로 지정)
+    // 제시어 선출 (커스텀 모드인 경우 모드 분기)
     let word = "";
-    if (categoryRef.current === "custom_submit") {
+    if (categoryRef.current === "custom_submit_self") {
       if (drawer && drawer.submittedWord && drawer.submittedWord.trim()) {
         word = drawer.submittedWord.trim();
       } else {
         word = getLocalRandomWord(categoryRef.current);
+      }
+    } else if (categoryRef.current === "custom_submit_others") {
+      word = getLocalRandomWord(categoryRef.current);
+      let attempts = 0;
+      while (usedWordsRef.current.has(word) && attempts < 50) {
+        word = getLocalRandomWord(categoryRef.current);
+        attempts++;
       }
     } else {
       word = getLocalRandomWord(categoryRef.current);
@@ -2466,7 +2474,7 @@ export default function Home() {
                     isHost ? (
                       <span className="word-value">{currentWord}</span>
                     ) : (
-                      wordCategory === "custom_submit" ? (
+                      wordCategory === "custom_submit_self" ? (
                         <span className="word-value" style={{ fontSize: "1.1rem", color: "var(--success-color)", fontWeight: "600" }}>
                           자기가 쓴 제시어로 그림을 그리세요.
                         </span>
@@ -2538,18 +2546,18 @@ export default function Home() {
                         🎨 이번 턴 제시어
                       </p>
                       <p style={{ 
-                        fontSize: wordCategory === "custom_submit" ? "2.2rem" : "3.5rem", 
+                        fontSize: wordCategory === "custom_submit_self" ? "2.2rem" : "3.5rem", 
                         fontWeight: "900", 
                         color: "var(--success-color)",
                         textShadow: "0 0 20px rgba(16, 185, 129, 0.5)",
                         letterSpacing: "0.05em"
                       }}>
-                        {wordCategory === "custom_submit" ? "자기가 쓴 제시어로 그림을 그리세요." : currentWord}
+                        {wordCategory === "custom_submit_self" ? "자기가 쓴 제시어로 그림을 그리세요." : currentWord}
                       </p>
                       <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "1rem" }}>
                         잠시 후 사라집니다 (화면을 누르면 즉시 닫힙니다).
                       </p>
-                      {wordCategory !== "custom_submit" && (
+                      {wordCategory !== "custom_submit_self" && (
                         <p style={{ fontSize: "0.8rem", color: "var(--accent-color)", fontWeight: "500", marginTop: "0.5rem" }}>
                           상단 [👁️ 제시어 보기] 버튼으로 언제든 다시 확인할 수 있습니다.
                         </p>

@@ -20,7 +20,8 @@ const BUILD_VERSION = "v1.2.0";
 const BUILD_TIME = "2026-06-05 16:35";
 
 const DEFAULT_CATEGORIES = {
-  custom_submit: "✍️ 실시간 커스텀 제시어 (참가자 직접 입력)",
+  custom_submit_others: "✍️ 실시간 커스텀 (남이 쓴 단어 그리기)",
+  custom_submit_self: "✍️ 실시간 커스텀 (내가 쓴 단어 그리기)",
   deokso: "🏫 덕소중학교 스페셜",
   class2_1: "✏️ 2학년 1반 제시어 (학생 & IT)",
   class2_2: "✏️ 2학년 2반 제시어 (학생 & IT)",
