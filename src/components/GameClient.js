@@ -2079,7 +2079,7 @@ export default function Home() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${gameStage === "LOBBY" ? "lobby-active" : ""}`}>
       {/* 글로벌 상단 헤더 */}
       <header className="app-header">
         <div className="logo-container" onClick={resetGameState}>

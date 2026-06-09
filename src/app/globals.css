@@ -88,6 +88,12 @@ body {
   overflow: hidden;
 }
 
+.app-container.lobby-active {
+  height: auto;
+  min-height: 100vh;
+  overflow-y: auto;
+}
+
 .main-content {
   display: flex;
   flex-direction: column;
@@ -99,6 +105,12 @@ body {
   height: calc(100vh - 75px);
   overflow: hidden;
   box-sizing: border-box;
+}
+
+.app-container.lobby-active .main-content {
+  height: auto;
+  min-height: calc(100vh - 75px);
+  overflow-y: visible;
 }
 
 /* 헤더 스타일 */
@@ -174,7 +186,7 @@ body {
 
 /* 학생용 카드 특화 스타일 */
 .lobby-card.student-card {
-  padding: 3.5rem;
+  padding: 2.2rem;
   border: 2px solid rgba(236, 72, 153, 0.15);
   box-shadow: 0 20px 40px rgba(236, 72, 153, 0.08);
 }
@@ -187,21 +199,21 @@ body {
 }
 
 .lobby-card.student-card .card-title {
-  font-size: 2.2rem;
-  margin-bottom: 1rem;
+  font-size: 1.6rem;
+  margin-bottom: 0.8rem;
 }
 
 .lobby-card.student-card .card-desc {
-  font-size: 1.05rem;
-  margin-bottom: 2.5rem;
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
   color: var(--text-primary);
   opacity: 0.9;
 }
 
 .lobby-card.student-card .form-input,
 .lobby-card.student-card .form-select {
-  font-size: 1.2rem;
-  padding: 1.1rem 1.25rem;
+  font-size: 1.05rem;
+  padding: 0.85rem 1.1rem;
   border-radius: var(--radius-md);
   border: 1.5px solid rgba(255, 255, 255, 0.15);
   background: rgba(10, 14, 26, 0.7);
@@ -222,8 +234,8 @@ body {
 }
 
 .lobby-card.student-card .btn {
-  font-size: 1.25rem;
-  padding: 1.15rem 2rem;
+  font-size: 1.1rem;
+  padding: 0.9rem 1.75rem;
   border-radius: var(--radius-md);
   margin-top: 1.5rem !important;
   animation: pulse-glow 2s infinite;
