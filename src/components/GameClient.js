@@ -291,7 +291,7 @@ export default function Home() {
         class2_2: { name: "✏️ 2학년 2반 제시어 (학생 & IT)", words: [] },
         class2_3: { name: "✏️ 2학년 3반 제시어 (학생 & IT)", words: [] },
         class2_4: { name: "✏️ 2학년 4반 제시어 (학생 & IT)", words: [] },
-        class2_5: { name: "✏️ 2학년 5반 제시어 (학생 & IT)", words: [] },
+        class2_5: { name: "✏️ 2학년 5반 제시어 (학생)", words: [] },
         class2_6: { name: "✏️ 2학년 6반 제시어 (학생 & IT)", words: [] },
         class2_7: { name: "✏️ 2학년 7반 제시어 (학생 & IT)", words: [] },
         class2_8: { name: "✏️ 2학년 8반 제시어 (학생 & IT)", words: [] },

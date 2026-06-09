@@ -91,8 +91,8 @@ export const WORD_CATEGORIES = {
     words: [...(STUDENT_LIST["2-4"] || []), ...COMPUTER_WORDS]
   },
   class2_5: {
-    name: "✏️ 2학년 5반 제시어 (학생 & IT)",
-    words: [...(STUDENT_LIST["2-5"] || []), ...COMPUTER_WORDS]
+    name: "✏️ 2학년 5반 제시어 (학생)",
+    words: [...(STUDENT_LIST["2-5"] || [])]
   },
   class2_6: {
     name: "✏️ 2학년 6반 제시어 (학생 & IT)",
