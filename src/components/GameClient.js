@@ -2157,8 +2157,12 @@ export default function Home() {
                   <option value="">-- 반을 선택하세요 --</option>
                   <option value="2-1">2학년 1반</option>
                   <option value="2-2">2학년 2반</option>
+                  <option value="2-3">2학년 3반</option>
                   <option value="2-4">2학년 4반</option>
                   <option value="2-5">2학년 5반</option>
+                  <option value="2-6">2학년 6반</option>
+                  <option value="2-7">2학년 7반</option>
+                  <option value="2-8">2학년 8반</option>
                 </select>
               </div>
 
