@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Canvas from "@/components/Canvas";
 import { WORD_CATEGORIES } from "@/utils/WordList";
+import { STUDENT_LIST } from "@/utils/studentList";
 import confetti from "canvas-confetti";
 import { db } from "@/utils/firebase";
 import { 
@@ -52,6 +53,8 @@ export default function Home() {
   };
 
   const [nickname, setNickname] = useState("");
+  const [selectedClass, setSelectedClass] = useState("");
+  const [studentName, setStudentName] = useState("");
   const [players, setPlayers] = useState([]); // { id, name, score, avatar, isConnected }
   
   // 게임 설정
@@ -718,16 +721,31 @@ export default function Home() {
   // 학생 방 입장
   const handleJoinRoom = async () => {
     const cleanRoomCode = roomCode.trim();
-    const cleanNickname = nickname.trim();
     
     if (!cleanRoomCode || cleanRoomCode.length !== 4) {
       alert("4자리 방 코드를 입력해주세요.");
       return;
     }
-    if (!cleanNickname) {
-      alert("닉네임을 입력해주세요.");
+
+    if (!selectedClass) {
+      alert("반을 선택해주세요.");
       return;
     }
+
+    const cleanName = studentName.trim();
+    if (!cleanName) {
+      alert("이름을 입력해주세요.");
+      return;
+    }
+
+    const classStudents = STUDENT_LIST[selectedClass];
+    if (!classStudents || !classStudents.includes(cleanName)) {
+      alert("등록된 학생이 없습니다.");
+      return;
+    }
+
+    const cleanNickname = `${selectedClass} ${cleanName}`;
+    setNickname(cleanNickname);
 
     setPeerLoading(true);
     setPeerError("");
@@ -2114,7 +2132,7 @@ export default function Home() {
             <div className="lobby-card student-card">
               <h2 className="card-title">✏️ 학생용 게임 참가</h2>
               <p className="card-desc">
-                선생님이 스크린에 띄워주신 4자리 참여 코드와 나의 닉네임을 입력하고 게임 대기실로 입장하세요.
+                선생님이 스크린에 띄워주신 4자리 참여 코드와 나의 반, 이름을 입력하고 게임 대기실로 입장하세요.
               </p>
 
               <div className="form-group">
@@ -2130,14 +2148,29 @@ export default function Home() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">내 닉네임</label>
+                <label className="form-label">학년 / 반 선택</label>
+                <select
+                  className="form-select"
+                  value={selectedClass}
+                  onChange={(e) => setSelectedClass(e.target.value)}
+                >
+                  <option value="">-- 반을 선택하세요 --</option>
+                  <option value="2-1">2학년 1반</option>
+                  <option value="2-2">2학년 2반</option>
+                  <option value="2-4">2학년 4반</option>
+                  <option value="2-5">2학년 5반</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">이름</label>
                 <input
                   type="text"
                   maxLength={10}
-                  placeholder="닉네임 입력 (최대 10자)"
+                  placeholder="이름 입력 (예: 강현구)"
                   className="form-input"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
                 />
               </div>
 
