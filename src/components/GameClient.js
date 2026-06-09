@@ -361,7 +361,19 @@ export default function Home() {
     };
     initAuthAndSync();
 
+    const handleUnload = () => {
+      if (USE_FIRESTORE_SYNC && roomCodeRef.current && !isHostRef.current && playerIdRef.current) {
+        const playerDocRef = doc(db, "catch_rooms", roomCodeRef.current, "players", playerIdRef.current);
+        deleteDoc(playerDocRef).catch(console.error);
+      }
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    window.addEventListener("pagehide", handleUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleUnload);
+      window.removeEventListener("pagehide", handleUnload);
       unsubsRef.current.forEach((unsub) => unsub && unsub());
       stopDrawingSync();
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
@@ -764,6 +776,17 @@ export default function Home() {
           alert("방을 찾을 수 없습니다. 참여 코드를 다시 확인해 주세요.");
           setPeerLoading(false);
           return;
+        }
+
+        // 동일 이름을 가진 기존 플레이어 문서가 있다면 중복 접속 방지를 위해 선제 삭제
+        const playersCol = collection(db, "catch_rooms", cleanRoomCode, "players");
+        const dupSnap = await getDocs(query(playersCol, where("name", "==", cleanNickname)));
+        if (!dupSnap.empty) {
+          const batch = writeBatch(db);
+          dupSnap.forEach((doc) => {
+            batch.delete(doc.ref);
+          });
+          await batch.commit();
         }
 
         // 2. 학생 고유 플레이어 정보 Firestore 등록
@@ -1723,14 +1746,10 @@ export default function Home() {
   const startNewTurn = async () => {
     isTransitioningRef.current = false;
     setTempShowWord(false);
-    // 점수순 정렬에 흔들리지 않도록 입장 순서(joinedAt)로 고정 정렬하여 턴 순서 보장
+    // 이름순(가나다순)으로 정렬하여 턴 순서의 안전성 및 일관성 보장 (stale timestamp 방지)
     const candidates = playersStateRef.current
       .filter((p) => p.id !== "host")
-      .sort((a, b) => {
-        const timeA = a.joinedAt?.toMillis ? a.joinedAt.toMillis() : (a.joinedAt || 0);
-        const timeB = b.joinedAt?.toMillis ? b.joinedAt.toMillis() : (b.joinedAt || 0);
-        return timeA - timeB;
-      });
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     if (candidates.length === 0) return;
     
     let drawerIdx = activeDrawerIndexRef.current;
@@ -1908,14 +1927,10 @@ export default function Home() {
     turnIndexRef.current += 1;
     activeDrawerIndexRef.current += 1;
 
-    // 점수순 정렬에 흔들리지 않도록 입장 순서(joinedAt)로 고정 정렬하여 턴 순서 보장
+    // 이름순(가나다순)으로 정렬하여 턴 순서의 안전성 및 일관성 보장 (stale timestamp 방지)
     const studentCandidates = playersStateRef.current
       .filter((p) => p.id !== "host")
-      .sort((a, b) => {
-        const timeA = a.joinedAt?.toMillis ? a.joinedAt.toMillis() : (a.joinedAt || 0);
-        const timeB = b.joinedAt?.toMillis ? b.joinedAt.toMillis() : (b.joinedAt || 0);
-        return timeA - timeB;
-      });
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
     if (activeDrawerIndexRef.current >= studentCandidates.length) {
       activeDrawerIndexRef.current = 0;
