@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { db } from "@/utils/firebase";
 import { WORD_CATEGORIES } from "@/utils/WordList";
+import { STUDENT_LIST } from "@/utils/studentList";
 import { 
   collection, 
   getDocs, 
@@ -35,7 +36,7 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
   
   // 상태 관리
-  const [activeTab, setActiveTab] = useState("create-room"); // create-room, words, scores
+  const [activeTab, setActiveTab] = useState("create-room"); // create-room, words, scores, students
   const [words, setWords] = useState([]); // { id, word, category }
   const [scores, setScores] = useState([]); // { id, nickname, score, roomCode, timestamp }
   const [loading, setLoading] = useState(false);
@@ -490,6 +491,12 @@ export default function AdminPage() {
             🏫 캐치마인드 방 만들기
           </button>
           <button 
+            className={`tab-btn ${activeTab === "students" ? "active green" : ""}`}
+            onClick={() => setActiveTab("students")}
+          >
+            👥 학생 명단 조회
+          </button>
+          <button 
             className={`tab-btn ${activeTab === "words" ? "active pink" : ""}`}
             onClick={() => setActiveTab("words")}
           >
@@ -771,6 +778,64 @@ export default function AdminPage() {
                 )}
               </div>
             )}
+
+            {/* =======================================================
+                [STUDENTS TAB] 학생 명단 조회 탭
+                ======================================================= */}
+            {activeTab === "students" && (
+              <div className="admin-panel students-panel">
+                <h3 className="panel-title" style={{ borderLeftColor: "#10b981" }}>👥 등록된 학급별 학생 명단</h3>
+                <p style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "2rem" }}>
+                  현재 학생 참가 로그인 시 비교 및 검증에 사용되는 반별 전체 학생 명단입니다.
+                </p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "1.5rem" }}>
+                  {Object.entries(STUDENT_LIST).map(([classKey, names]) => (
+                    <div key={classKey} style={{
+                      background: "rgba(255, 255, 255, 0.02)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "12px",
+                      padding: "1.25rem",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.75rem"
+                    }}>
+                      <h4 style={{ 
+                        fontSize: "1.1rem", 
+                        fontWeight: "700", 
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.08)", 
+                        paddingBottom: "0.5rem", 
+                        color: "#10b981",
+                        display: "flex",
+                        justifyContent: "space-between"
+                      }}>
+                        <span>🏫 {classKey}반 명단</span>
+                        <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>{names.length}명</span>
+                      </h4>
+                      <div style={{ 
+                        display: "grid", 
+                        gridTemplateColumns: "repeat(auto-fill, minmax(65px, 1fr))", 
+                        gap: "0.4rem" 
+                      }}>
+                        {names.map((name, index) => (
+                          <span key={index} style={{
+                            background: "rgba(16, 185, 129, 0.08)",
+                            border: "1px solid rgba(16, 185, 129, 0.15)",
+                            color: "#34d399",
+                            padding: "0.25rem 0.2rem",
+                            borderRadius: "6px",
+                            fontSize: "0.85rem",
+                            textAlign: "center"
+                          }}>
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -856,6 +921,14 @@ export default function AdminPage() {
         }
         .tab-btn:hover {
           color: #ffffff;
+        }
+        .tab-btn.active.cyan {
+          color: #06b6d4;
+          border-bottom-color: #06b6d4;
+        }
+        .tab-btn.active.green {
+          color: #10b981;
+          border-bottom-color: #10b981;
         }
         .tab-btn.active.pink {
           color: #ec4899;
