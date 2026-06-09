@@ -241,11 +241,14 @@ export default function Home() {
       }
 
       const redundantWordDocs = [];
+      const obsoleteKeys = new Set(["class2", "class7", "class8"]);
       loadedWordsList.forEach(w => {
         if (defaultCatKeys.has(w.category)) {
           if (!localWordSet.has(`${w.category}:${w.word}`)) {
             redundantWordDocs.push(w);
           }
+        } else if (obsoleteKeys.has(w.category)) {
+          redundantWordDocs.push(w);
         }
       });
 
@@ -271,22 +274,27 @@ export default function Home() {
             createdAt: serverTimestamp()
           });
         });
-        await Promise.all(promises);
+        await Promise.all(addPromises);
         
         // 새로 추가된 단어가 있으므로 리로드
         const reSnapshot = await getDocs(wordsCol);
         loadedWordsList = [];
         reSnapshot.forEach((doc) => {
-          loadedWordsList.push(doc.data());
+          loadedWordsList.push({ id: doc.id, ...doc.data() });
         });
       }
       
       const newCategories = {
         custom_submit: { name: "✍️ 실시간 커스텀 제시어 (참가자 직접 입력)", words: [] },
         deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
-        class2: { name: "✏️ 2반 스페셜 & 덕소중 상식", words: [] },
-        class7: { name: "✏️ 7반 스페셜 & 우리나라 상식", words: [] },
-        class8: { name: "✏️ 8반 스페셜 & 덕소중 상식", words: [] },
+        class2_1: { name: "✏️ 2학년 1반 제시어 (학생 & IT)", words: [] },
+        class2_2: { name: "✏️ 2학년 2반 제시어 (학생 & IT)", words: [] },
+        class2_3: { name: "✏️ 2학년 3반 제시어 (학생 & IT)", words: [] },
+        class2_4: { name: "✏️ 2학년 4반 제시어 (학생 & IT)", words: [] },
+        class2_5: { name: "✏️ 2학년 5반 제시어 (학생 & IT)", words: [] },
+        class2_6: { name: "✏️ 2학년 6반 제시어 (학생 & IT)", words: [] },
+        class2_7: { name: "✏️ 2학년 7반 제시어 (학생 & IT)", words: [] },
+        class2_8: { name: "✏️ 2학년 8반 제시어 (학생 & IT)", words: [] },
         animals: { name: "🦁 동물 & 식물", words: [] },
         food: { name: "🍕 맛있는 음식", words: [] },
         knowledge: { name: "🧠 교과 및 일반상식", words: [] }

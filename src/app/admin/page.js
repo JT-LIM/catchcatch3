@@ -22,9 +22,14 @@ const BUILD_TIME = "2026-06-05 16:35";
 const DEFAULT_CATEGORIES = {
   custom_submit: "✍️ 실시간 커스텀 제시어 (참가자 직접 입력)",
   deokso: "🏫 덕소중학교 스페셜",
-  class2: "✏️ 2반 스페셜 & 덕소중 상식",
-  class7: "✏️ 7반 스페셜 & 우리나라 상식",
-  class8: "✏️ 8반 스페셜 & 덕소중 상식",
+  class2_1: "✏️ 2학년 1반 제시어 (학생 & IT)",
+  class2_2: "✏️ 2학년 2반 제시어 (학생 & IT)",
+  class2_3: "✏️ 2학년 3반 제시어 (학생 & IT)",
+  class2_4: "✏️ 2학년 4반 제시어 (학생 & IT)",
+  class2_5: "✏️ 2학년 5반 제시어 (학생 & IT)",
+  class2_6: "✏️ 2학년 6반 제시어 (학생 & IT)",
+  class2_7: "✏️ 2학년 7반 제시어 (학생 & IT)",
+  class2_8: "✏️ 2학년 8반 제시어 (학생 & IT)",
   animals: "🦁 동물 & 식물",
   food: "🍕 맛있는 음식",
   knowledge: "🧠 교과 및 일반상식"
@@ -107,11 +112,14 @@ export default function AdminPage() {
       }
 
       const redundantWordDocs = [];
+      const obsoleteKeys = new Set(["class2", "class7", "class8"]);
       loadedWords.forEach(w => {
         if (defaultCatKeys.has(w.category)) {
           if (!localWordSet.has(`${w.category}:${w.word}`)) {
             redundantWordDocs.push(w);
           }
+        } else if (obsoleteKeys.has(w.category)) {
+          redundantWordDocs.push(w);
         }
       });
 
