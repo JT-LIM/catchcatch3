@@ -83,6 +83,7 @@ export default function Home() {
   const [currentWord, setCurrentWord] = useState("");
   const [wordLength, setWordLength] = useState(0);
   const [tempShowWord, setTempShowWord] = useState(false);
+  const [showDrawerCenterWord, setShowDrawerCenterWord] = useState(false);
   const [wordHint, setWordHint] = useState(""); // 글자수 자릿수 표시
 
   const [timeLeft, setTimeLeftState] = useState(60);
@@ -1767,12 +1768,21 @@ export default function Home() {
     activeDrawerIndexRef.current = drawerIdx;
     const drawer = candidates[drawerIdx];
     
-    // 제시어 무작위 선출
-    let word = getLocalRandomWord(categoryRef.current);
-    let attempts = 0;
-    while (usedWordsRef.current.has(word) && attempts < 50) {
+    // 제시어 선출 (커스텀 모드인 경우 출제자가 직접 제출한 단어로 지정)
+    let word = "";
+    if (categoryRef.current === "custom_submit") {
+      if (drawer && drawer.submittedWord && drawer.submittedWord.trim()) {
+        word = drawer.submittedWord.trim();
+      } else {
+        word = getLocalRandomWord(categoryRef.current);
+      }
+    } else {
       word = getLocalRandomWord(categoryRef.current);
-      attempts++;
+      let attempts = 0;
+      while (usedWordsRef.current.has(word) && attempts < 50) {
+        word = getLocalRandomWord(categoryRef.current);
+        attempts++;
+      }
     }
     usedWordsRef.current.add(word);
     currentWordRef.current = word;
@@ -2026,6 +2036,25 @@ export default function Home() {
     }
     return false;
   };
+
+  // 새 턴이 시작되면 상단 제시어 보기 상태 초기화
+  useEffect(() => {
+    setTempShowWord(false);
+  }, [currentRound, currentTurn, drawerId]);
+
+  // 그림 그리는 사람(출제자) 제시어 중앙 3초 팝업 제어
+  useEffect(() => {
+    const isMeDrawer = checkIsDrawer();
+    if (isMeDrawer && currentWord) {
+      setShowDrawerCenterWord(true);
+      const timer = setTimeout(() => {
+        setShowDrawerCenterWord(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowDrawerCenterWord(false);
+    }
+  }, [currentWord, turnStatus, drawerId, gameStage]);
 
   // 로컬에 채팅 메시지 추가 (WebRTC 전용)
   const addChatMessage = (msgObj) => {
@@ -2437,26 +2466,27 @@ export default function Home() {
                     isHost ? (
                       <span className="word-value">{currentWord}</span>
                     ) : (
-                      timeLeft > 57 || tempShowWord ? (
-                        <span className="word-value" style={{ color: "var(--success-color)" }}>{currentWord}</span>
+                      wordCategory === "custom_submit" ? (
+                        <span className="word-value" style={{ fontSize: "1.1rem", color: "var(--success-color)", fontWeight: "600" }}>
+                          자기가 쓴 제시어로 그림을 그리세요.
+                        </span>
                       ) : (
-                        <span 
-                          className="word-value" 
+                        <button 
+                          type="button"
+                          className="btn btn-secondary btn-sm" 
                           style={{ 
                             fontSize: "0.95rem", 
-                            color: "var(--text-muted)", 
-                            cursor: "pointer", 
-                            border: "1px dashed rgba(255,255,255,0.2)",
-                            padding: "0.2rem 0.6rem",
-                            borderRadius: "4px"
+                            padding: "0.25rem 0.75rem",
+                            borderRadius: "6px",
+                            background: tempShowWord ? "var(--success-color)" : "var(--gradient-secondary)",
+                            boxShadow: tempShowWord ? "0 0 10px rgba(16, 185, 129, 0.4)" : "none",
+                            border: "none",
+                            color: "white"
                           }}
-                          onMouseEnter={() => setTempShowWord(true)}
-                          onMouseLeave={() => setTempShowWord(false)}
-                          onTouchStart={() => setTempShowWord(true)}
-                          onTouchEnd={() => setTempShowWord(false)}
+                          onClick={() => setTempShowWord(!tempShowWord)}
                         >
-                          👁️ 마우스 오버/터치 시 보기
-                        </span>
+                          {tempShowWord ? `🙈 제시어 숨기기 [ ${currentWord} ]` : "👁️ 제시어 보기"}
+                        </button>
                       )
                     )
                   ) : (
@@ -2480,18 +2510,66 @@ export default function Home() {
                   onDrawEvent={handleCanvasDrawEvent}
                 />
 
+                {/* 그림그리는 사람 전용 3초 제시어 안내 오버레이 */}
+                {showDrawerCenterWord && (
+                  <div 
+                    className="canvas-overlay-msg" 
+                    onClick={() => setShowDrawerCenterWord(false)}
+                    style={{ 
+                      background: "rgba(10, 14, 26, 0.85)",
+                      cursor: "pointer",
+                      zIndex: 6
+                    }}
+                  >
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        textAlign: "center",
+                        animation: "scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                        padding: "2rem 3rem",
+                        borderRadius: "16px",
+                        background: "rgba(19, 26, 48, 0.95)",
+                        border: "2px solid var(--accent-color)",
+                        boxShadow: "0 0 30px rgba(139, 92, 246, 0.4)",
+                        cursor: "default"
+                      }}
+                    >
+                      <p style={{ fontSize: "1.1rem", color: "var(--text-secondary)", marginBottom: "0.5rem", fontWeight: "600" }}>
+                        🎨 이번 턴 제시어
+                      </p>
+                      <p style={{ 
+                        fontSize: wordCategory === "custom_submit" ? "2.2rem" : "3.5rem", 
+                        fontWeight: "900", 
+                        color: "var(--success-color)",
+                        textShadow: "0 0 20px rgba(16, 185, 129, 0.5)",
+                        letterSpacing: "0.05em"
+                      }}>
+                        {wordCategory === "custom_submit" ? "자기가 쓴 제시어로 그림을 그리세요." : currentWord}
+                      </p>
+                      <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "1rem" }}>
+                        잠시 후 사라집니다 (화면을 누르면 즉시 닫힙니다).
+                      </p>
+                      {wordCategory !== "custom_submit" && (
+                        <p style={{ fontSize: "0.8rem", color: "var(--accent-color)", fontWeight: "500", marginTop: "0.5rem" }}>
+                          상단 [👁️ 제시어 보기] 버튼으로 언제든 다시 확인할 수 있습니다.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* 라운드 전환 (답 확인) 오버레이 화면 */}
                 {turnStatus === "TRANSITION" && (
                   <div className="canvas-overlay-msg" style={{ background: "rgba(10, 14, 26, 0.96)" }}>
                     <p className="overlay-title" style={{ 
                       fontSize: "2.8rem", 
                       fontWeight: "900",
-                      color: transitionMsg.includes("정답") ? "#10b981" : "var(--warning-color)",
-                      textShadow: transitionMsg.includes("정답") 
+                      color: transitionMsg.includes("맞췄습니다") ? "#10b981" : "var(--warning-color)",
+                      textShadow: transitionMsg.includes("맞췄습니다") 
                         ? "0 0 25px rgba(16, 185, 129, 0.6)" 
                         : "0 0 25px rgba(245, 158, 11, 0.6)"
                     }}>
-                      {transitionMsg.includes("정답") ? "🎉 CORRECT ANSWER 🎉" : "⏰ TIME OUT"}
+                      {transitionMsg.includes("맞췄습니다") ? "🎉 CORRECT ANSWER 🎉" : "⏰ 시간 초과"}
                     </p>
                     <p className="overlay-desc" style={{ 
                       fontSize: "1.5rem", 
@@ -2506,7 +2584,7 @@ export default function Home() {
                       width: "60px", 
                       height: "60px", 
                       border: "4px solid rgba(255,255,255,0.1)", 
-                      borderTopColor: transitionMsg.includes("정답") ? "#10b981" : "var(--accent-color)", 
+                      borderTopColor: transitionMsg.includes("맞췄습니다") ? "#10b981" : "var(--warning-color)", 
                       borderRadius: "50%", 
                       animation: "spin 1s linear infinite" 
                     }} />
