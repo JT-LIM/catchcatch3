@@ -2171,7 +2171,7 @@ export default function Home() {
                 <input
                   type="text"
                   maxLength={10}
-                  placeholder="이름 입력 (예: 강현구)"
+                  placeholder="이름 입력"
                   className="form-input"
                   value={studentName}
                   onChange={(e) => setStudentName(e.target.value)}
