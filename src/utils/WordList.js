@@ -87,8 +87,22 @@ export const WORD_CATEGORIES = {
     words: [...(STUDENT_LIST["2-2"] || []), ...COMPUTER_WORDS]
   },
   class2_3: {
-    name: "✏️ 2학년 3반 제시어 (학생 & IT)",
-    words: [...(STUDENT_LIST["2-3"] || []), ...COMPUTER_WORDS]
+    name: "✏️ 2학년 3반 제시어 (학생 & 특별)",
+    words: [
+      ...(STUDENT_LIST["2-3"] || []),
+      "배드민턴",
+      "송종혁쌤",
+      "회장",
+      "부회장",
+      "피구",
+      "피구왕예원",
+      "카누타는홍선우",
+      "축구하는오정석",
+      "이도규",
+      "89세",
+      "최이서이",
+      "샤워한원우씨"
+    ]
   },
   class2_4: {
     name: "✏️ 2학년 4반 제시어 (학생 & IT)",

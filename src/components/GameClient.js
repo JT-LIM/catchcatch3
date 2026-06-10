@@ -291,7 +291,7 @@ export default function Home() {
         deokso: { name: "🏫 덕소중학교 스페셜", words: [] },
         class2_1: { name: "✏️ 2학년 1반 제시어 (학생 & IT)", words: [] },
         class2_2: { name: "✏️ 2학년 2반 제시어 (학생 & IT)", words: [] },
-        class2_3: { name: "✏️ 2학년 3반 제시어 (학생 & IT)", words: [] },
+        class2_3: { name: "✏️ 2학년 3반 제시어 (학생 & 특별)", words: [] },
         class2_4: { name: "✏️ 2학년 4반 제시어 (학생 & IT)", words: [] },
         class2_5: { name: "✏️ 2학년 5반 제시어 (학생)", words: [] },
         class2_6: { name: "✏️ 2학년 6반 제시어 (학생 & IT)", words: [] },
